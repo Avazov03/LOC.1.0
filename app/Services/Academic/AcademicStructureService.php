@@ -153,6 +153,23 @@ class AcademicStructureService
         ]);
     }
 
+    /**
+     * Program and academic year stay fixed: internships and memberships already point at this course.
+     */
+    public function updateStudyYear(User $actor, int $id, int $courseNumber, string $name): StudyYear
+    {
+        $studyYear = $this->studyYear($actor, $id);
+        $this->assertUnique(
+            StudyYear::query()->where('program_id', $studyYear->program_id)->where('academic_year_id', $studyYear->academic_year_id)
+                ->where('course_number', $courseNumber)->whereKeyNot($studyYear->id)->exists(),
+            'course_number',
+            'Bu kurs shu yil va yo‘nalishda allaqachon bor.',
+        );
+        $studyYear->update(['course_number' => $courseNumber, 'name' => $name]);
+
+        return $studyYear;
+    }
+
     public function groups(User $actor): Collection
     {
         return StudentGroup::query()
@@ -176,6 +193,24 @@ class AcademicStructureService
             'name' => $name,
             'code' => $code,
         ]);
+    }
+
+    /**
+     * The course stays fixed: internships, invites and memberships already point at this group.
+     */
+    public function updateGroup(User $actor, int $id, string $name, string $code): StudentGroup
+    {
+        $group = StudentGroup::query()
+            ->whereHas('studyYear.program.faculty', fn ($query) => $query->where('university_id', $this->universityId($actor)))
+            ->findOrFail($id);
+        $this->assertUnique(
+            StudentGroup::query()->where('study_year_id', $group->study_year_id)->where('name', $name)->whereKeyNot($group->id)->exists(),
+            'name',
+            'Bu guruh allaqachon mavjud.',
+        );
+        $group->update(['name' => $name, 'code' => $code]);
+
+        return $group;
     }
 
     public function faculty(User $actor, int $id): Faculty
@@ -204,10 +239,6 @@ class AcademicStructureService
 
     private function universityId(User $actor): int
     {
-        if ($actor->university_id === null) {
-            abort(403);
-        }
-
         return $actor->university_id;
     }
 

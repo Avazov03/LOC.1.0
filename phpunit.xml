@@ -32,5 +32,10 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="TELEGRAM_BOT_USERNAME" value="" force="true"/>
+        <env name="TELEGRAM_BOT_TOKEN" value="" force="true"/>
+        <env name="TELEGRAM_WEBHOOK_SECRET" value="" force="true"/>
+        <env name="ADMIN_LOGIN" value="" force="true"/>
+        <env name="ADMIN_PASSWORD" value="" force="true"/>
     </php>
 </phpunit>

@@ -1,46 +1,43 @@
 # Assumptions
 
-**Status:** Phase 0. Business code has not been written.  
+**Status:** Phase 0 locked on 8 October 2026. D1–D6 are final.  
 **Rule:** These are recorded so implementation does not invent a second, silent rule. Spec business rules stay in `SOURCE-OF-TRUTH-SPEC.md`. This file only records gaps.
 
-Each item is one of:
+Phase 1 foundation is implemented (session auth, academic tables, Tailwind staff screens). This document does not authorize Phase 2 work until Phase 1 is accepted.
 
-- **USE** — least-conflict reading. Implementation will follow it unless you reject it before the phase that needs it.
-- **DECISION** — two readings change user-visible behavior. Phase that needs it does not start until you choose.
+D1–D6 above are final. Items A1 onward are **USE** readings. They are the least-conflict reading of a gap. They are not a second product.
 
 ---
 
-## DECISION — answer these before the listed phase
+## FINAL — D1 through D6
+
+These are no longer open. Later phases follow them. They do not add a rule the source of truth forbids. They close a gap the source of truth left unnamed.
 
 ### D1. Academic history vs one group column
-**Needed before:** Phase 1 schema.  
 **Conflict:** §6 says academic state changes every year and history must survive. §73 stores one academic group on the student profile. §71 does not list an enrollment table.
 
-**USE unless you reject it:** Add `student_group_memberships` (student, group, academic year, invite, status, joined_at, ended_at). `student_profiles.current_group_id` points at the active membership. One ACTIVE membership per student. Ending a membership does not delete it.
+**Final:** `student_group_memberships` stores student, group, academic year, invite, status, `joined_at`, and `ended_at`. `student_profiles.current_group_id` points at the active membership. One ACTIVE membership per student. Ending a membership does not delete it.
 
-**Rejected alternative:** Only `current_group_id`, which cannot satisfy §6.
+**Rejected:** Only `current_group_id`. That cannot satisfy §6.
 
 ### D2. Second assignment while one is still active
-**Needed before:** Phase 2.  
-**Spec:** §23 one ACTIVE assignment at a time. §24 overlapping ACTIVE ranges are refused. The sequence is end the old one, then start the new one. A future PENDING that does not overlap is not described.
+**Gap:** §23 allows one ACTIVE assignment. §24 refuses overlapping ACTIVE ranges. A future PENDING that does not overlap was not described.
 
-**USE unless you reject it:** A student may have at most one assignment in `PENDING` or `ACTIVE`. A non-overlapping future assignment is also refused until the current one is `ENDED` or `CANCELLED`. Historical `ENDED` rows stay.
+**Final:** A student may have at most one assignment in `PENDING` or `ACTIVE`. A non-overlapping future assignment is refused until the current one is `ENDED` or `CANCELLED`. Historical `ENDED` and `CANCELLED` rows stay. The database expression is a partial unique index on `student_profile_id` where status is `PENDING` or `ACTIVE`. A range-exclusion constraint is unnecessary once that unique index exists.
 
 ### D3. `multiple_sessions_allowed = false`
-**Needed before:** Phase 4.  
-**Conflict:** §41 says a second interval is not strictly forbidden and, if policy disallows it, status may be affected later. The contract says multiple sessions exist when policy allows them. It does not define the penalty when policy disallows them.
+**Conflict:** §41 says a second interval is not strictly forbidden and, if policy disallows it, status may be affected later. The contract allows multiple sessions when policy allows them and does not name the penalty when policy disallows them.
 
-**USE unless you reject it:** The second check-in on the same Asia/Tashkent date is rejected. No second session is created. Message tells the student that another session is not allowed today. No invented status penalty formula.
+**Final:** The second check-in on the same university-local date is rejected. No second session is created. The student is told another session is not allowed today. No extra status penalty is invented.
 
-**Rejected alternative:** Accept the second session and mark the day with an undefined penalty.
+**Rejected:** Accept the second session and mark the day with an undefined penalty.
 
 ### D4. Day status when minimum duration is OFF
-**Needed before:** Phase 4.  
-**Spec:** §44 says OFF means the system records real attendance. It does not name the day status. §43 says PRESENT means the policy requirement was met.
+**Gap:** §44 says OFF means the system records real attendance and does not name the day status. §43 says PRESENT means the policy requirement was met.
 
-**USE unless you reject it:**
+**Final:**
 
-- OFF, or duration greater than or equal to the configured minimum, and at least one COMPLETED session → `PRESENT`
+- Minimum OFF, or duration greater than or equal to the configured minimum, and at least one COMPLETED session → `PRESENT`
 - Completed time above 0 but under the minimum → `PARTIAL`
 - Verified check-in whose session never checked out → `INCOMPLETE`
 - No verified check-in, and at least one radius rejection that day → `LOCATION_REJECTED`
@@ -50,33 +47,29 @@ Each item is one of:
 A one-minute completed session with minimum duration OFF is `PRESENT`, because no minimum was configured.
 
 ### D5. May a supervisor create an assignment directly?
-**Needed before:** Phase 2.  
-**Conflict:** §21 says an admin or an authorized supervisor may assign a student to an organization. §4.2 does not list assignment among the supervisor’s normal powers. It says the supervisor starts an organization-change workflow only when that authority was given. The spec never names the flag that makes a supervisor “authorized”.
+**Conflict:** §21 says an admin or an authorized supervisor may assign a student to an organization. §4.2 does not list assignment among the supervisor’s everyday powers and never names the flag that makes a supervisor “authorized”.
 
-**USE unless you reject it:** A supervisor may create an assignment only for a student who already participates in an internship they currently supervise, and only to an ACTIVE organization. They still cannot create an organization or set its location. Bulk assign uses the same limit.
+**Final:** A supervisor may create an assignment only for a student who already participates in an internship they currently supervise, and only to an ACTIVE organization in the same university. They cannot create an organization or set its location. Bulk assign uses the same limit. The narrower reading (admin-only initial assignment) is not used.
 
-**Narrower alternative:** Supervisors never create assignments. They only approve existing-organization change requests. Admins do every initial assignment. Say so before Phase 2 if you want this narrower reading.
+### D6. Web UI stack vs Zonic design DNA
+**Conflict:** §85 and the implementation contract require one Laravel app with React, Inertia, TypeScript, and Tailwind. `docs/design/01-DIZAYN-DNK.md` and `03-PROMPTLAR.md` require Sneat Bootstrap 5 and vanilla JS, and they forbid React and Tailwind. The 8 October 2026 stack lock repeats React, TypeScript, Inertia, and Tailwind as the MVP frontend.
 
-### D6. Admin UI stack vs Zonic design DNA
-**Needed before:** the first admin screen. Laravel, database, and auth in Phase 1 can start either way.  
-**Conflict:** `SOURCE-OF-TRUTH-SPEC.md` §85 and the implementation contract require one Laravel app with React, Inertia, TypeScript, and Tailwind. `docs/design/01-DIZAYN-DNK.md` and `03-PROMPTLAR.md` require Sneat Bootstrap 5, vanilla JS modules, Boxicons, and Public Sans, and they forbid adding React, Vue, or Tailwind.
+**Final:** Staff UI is React, TypeScript, Inertia, and Tailwind inside the Laravel app. The kit is a visual reference, not a second application: primary `#696cff`, Public Sans, a fixed vertical menu, cards, light and dark, Leaflet for the map. Do not ship the demo HTML catalog. Do not build a static admin beside Inertia. Do not switch staff auth to the kit JWT API. Laravel session stays. No public marketing site. UI copy stays Uzbek Latin. Russian and English kit dictionaries are not built.
 
-**USE unless you reject it:** Keep Laravel + Inertia + React as the application. The look comes from the kit: copy `assets/vendor`, `zon-admin.css`, Public Sans, Boxicons, and Leaflet without editing `core.css`. React pages output those existing class names (`card`, `table`, `layout-menu`, `zon-*`). Do not copy the 150 demo HTML pages into the product. Do not build a second static admin. Do not switch admin auth to the kit’s JWT `/Admin/Auth/Login` API. Laravel session stays the staff login. A public marketing site from `front-pages/` is not part of MVP. MVP UI language stays Uzbek; Russian and English dictionaries from the kit are not built now.
-
-**Literal-kit alternative:** Static HTML admin plus a Laravel JSON API, exactly as `02-QOLLANMA.md` describes. That drops Inertia and React. Say so before the first screen if you want that path.
+Phase 1 aligned every staff screen to Tailwind 4. Sneat CSS and JS were removed from `public/`. Public Sans is self-hosted under `resources/fonts` (SIL OFL).
 
 ---
 
 ## USE — recorded readings
 
-### A1. Repository is greenfield
-`Loc.1.0` has no files, git, Laravel app, migrations, or tests. There is no existing architecture to preserve. Sibling folders under `SCP loyhalar` are not part of this product and their rules will not be copied.
+### A1. Repository started empty
+The first inspection found an empty folder. Sibling folders under `SCP loyhalar` are not part of this product and their rules are not copied. By the Phase 0 lock the folder is a git repository on `main`, remote `https://github.com/Avazov03/LOC.1.0.git`, with the early foundation described in `ARCHITECTURE.md` section 1.
 
 ### A2. Laravel 13 is real and is the framework
 Verified against Laravel 13 release notes: released 17 March 2026, PHP 8.3–8.5, security fixes until 17 March 2028. Docker will pin **PHP 8.4**, which sits inside that range.
 
-### A3. Official React starter kit, one application
-Phase 1 starts from the official Laravel React starter kit (Inertia 3, React 19, TypeScript, Tailwind 4, accessible UI components). No Next.js, no separate frontend repo, no microservices.
+### A3. One Laravel application, not a second frontend
+The app is the `laravel/laravel` skeleton plus Inertia React, not the official starter-kit component library. Stack: Inertia Laravel 3, `@inertiajs/react` 3, React 19, TypeScript, Tailwind 4. No Next.js, no separate frontend repo, no microservices. Tailwind is the staff styling system (D6) and the only UI pipeline.
 
 ### A4. UI name “Internship Group” is the `internships` row
 §15 and the admin menu say Internship Group. §71’s entity is `Internship`. One row is one cohort: one student group, one academic year, one inclusive period, and a supervisor history. It is not an academic group and not an organization.
@@ -235,7 +228,7 @@ Admin and supervisor use Inertia routes. The only external HTTP endpoint is the 
 Development seed uses a demo university and demo people. It includes the contract §49 scenarios (one student one organization, many students one organization, one group many organizations). Real TDYU names, structures, and tokens are not committed.
 
 ### A42. Staff login
-Email plus password, Laravel session auth, hashed passwords. Inactive staff cannot log in. No SSO and no HEMIS login.
+Staff sign in with `login` and password. Email is contact data, unique when present, and is not the credential. Laravel session auth, hashed passwords. `users.status` must be `ACTIVE`. No SSO and no HEMIS login. Students have no web password and no web home (A13).
 
 ### A43. Map
 Leaflet with OpenStreetMap-compatible tiles. Admin sets marker and sees the radius circle. The browser never decides verification.
@@ -243,17 +236,122 @@ Leaflet with OpenStreetMap-compatible tiles. Admin sets marker and sees the radi
 ### A44. Backup
 Phase 7 documents a daily `pg_dump` of PostgreSQL, 30-day retention, and a tested restore. Location and attendance are in that backup. Phase 0 only records the requirement (contract §58).
 
-### A45. Performance claim
-The schema is shaped for 1,000+ students. Phase 0 does not claim that load is proven (contract §59). A measured check belongs to Phase 7.
+### A45. Scale targets, not a measured claim
+Three targets, one modular monolith. None of them is a load-test result.
+
+| Target | Meaning |
+| --- | --- |
+| Initial operation | 1,000+ students in one university (§129) |
+| Architecture | 10,000+ students without a second service or a second database |
+| Future | More universities and larger populations, using `university_id` scope already on the domain |
+
+Phase 7 measures the 1,000-student path. Phase 0 does not claim that measurement has been run. The means are indexes, pagination, bulk chunks, Redis queues, and spatial indexes (`ARCHITECTURE.md` sections 3.9 and 3.10). Microservices, Kafka, and Kubernetes stay out.
 
 ### A46. Tests
-PHPUnit 12 as shipped with Laravel 13, unless the starter kit already uses Pest. Feature tests hit PostgreSQL + PostGIS, not SQLite, whenever geography or exclusion constraints matter.
+PHPUnit 12, which is what this app ships. Feature tests hit PostgreSQL + PostGIS, not SQLite, whenever geography or a partial unique that sqlite cannot express matters. `phpunit.xml` runs on sqlite memory for speed; `phpunit.pgsql.xml` (`composer test:pgsql`) runs the same suite on PostGIS and Redis and is the gate.
 
 ### A47. Git
-The folder is not a git repository. Phase 1 may run `git init`. Commits happen only when you ask.
+The repository is initialized. Branch `main` tracks `origin` at `https://github.com/Avazov03/LOC.1.0.git`. Commits and pushes happen only when asked. `.env` stays untracked.
 
 ### A48. Blocked and inactive students
 `BLOCKED` and `INACTIVE` students cannot check in, check out, or complete a new onboarding. The existing profile remains. Admin can correct identity fields; that correction is audited (§12, §22).
 
 ### A49. Turning location off is an audited admin override
 `location_required` exists because the contract lists it. Default is true. If an admin sets it false, check-in skips the geofence and still stores an event. The student path does not have a way to skip location by itself (§67).
+
+## USE — Phase 2 readings
+
+### A50. Supervisor periods are half-open and change "today"
+`internship_supervisor_periods` covers `[starts_on, ends_on)`. Replacing a supervisor sets the open period's `ends_on` to the university's today and opens the next period from the same date, so the two never overlap (PostgreSQL `EXCLUDE` on `daterange(..., '[)')`). A same-day replacement leaves an empty range in history. Scope uses only the open period (`ends_on IS NULL`): the replaced supervisor loses access at once. Assignments keep their own `supervisor_profile_id` snapshot.
+
+### A51. Stored instants are UTC
+`config('app.timezone')` is `UTC` and the PostgreSQL session timezone is pinned to `UTC`. Eloquent writes timestamps without an offset, so any other app timezone shifts every stored instant on `timestamptz`. University "today", day edges, and every displayed time use `universities.timezone` (A-series day rules unchanged). Assignment form dates are local: start is 00:00:00 and end is 23:59:59 of the chosen dates in the university timezone.
+
+### A52. Assignment needs internship participation, for admin too
+An assignment row names an internship. The student must be a participant of that internship (A9), whoever creates it. D5 narrows supervisors further to internships with their open period.
+
+### A53. Change request needs a current ACTIVE assignment
+Opening a request requires an ACTIVE assignment, stored as `current_assignment_id`. Approval ends it now and creates the replacement from now to the old planned `end_at`. If that `end_at` has already passed, approval is refused; the admin creates a fresh assignment instead.
+
+### A54. Cancelling an ACTIVE assignment is admin-only and needs a reason
+`ACTIVE → CANCELLED` exists for a placement that should never have been in force. It is admin-only, requires a reason, and is audited. Normal closure is `ACTIVE → ENDED`.
+
+### A55. Audit rows carry `university_id`
+`audit_logs.university_id` is not in the original ERD. It lets the audit page and later reports scope by university without joining every entity type. Scheduler-written rows have a null actor and take the university from the entity.
+
+### A56. Approved new-organization request points at the created row
+On admin approval of a `NEW_ORGANIZATION` request, `requested_organization_id` is set to the organization created in the same transaction. `requested_organization_data` stays as the student's original text.
+
+### A57. Scheduler commands exist before Telegram
+`invites:expire` and `assignments:activate-due` run every five minutes without overlap. Onboarding treats an expired-but-ACTIVE invite as expired (A18), so the command only tidies state.
+
+### A58. Onboarding service is channel-agnostic
+`StudentOnboardingService` (context, join) exists in Phase 2 with tests. Phase 3 calls it from the Telegram adapter. It never creates an assignment (A8).
+
+### A59. Public bot username for invite links
+`TELEGRAM_BOT_USERNAME` (public, not a secret) builds `https://t.me/<bot>?start=<token>`. Empty means the admin sees the raw token once. Token and webhook secret stay empty in `.env.example`.
+
+### A60. Date corrections do not cascade
+Editing internship dates changes only `internships.period_start/period_end`; existing assignment dates are not shifted. An assignment is corrected on its own (A62). Group and academic year of an internship never change.
+
+### A61. Change requests are rate-limited per signed-in user
+§61 asks for a limit without a number. Opening change requests is limited to 10 per minute per user (`throttle:change-requests`). The one-pending-request rule (partial unique index) stays the real guard.
+
+### A62. Assignment date correction
+Admin only. PENDING: start and end editable; if the new start is today or earlier and the organization is ACTIVE, the row becomes ACTIVE. ACTIVE: only the planned end, and it must stay in the future (closing now is "Yakunlash"). ENDED and CANCELLED rows are history and are refused. Organization and student never change through this path. Audited as `assignment.update`.
+
+### A63. Student status does not touch assignments
+Admin may set ACTIVE, INACTIVE or BLOCKED with a required reason (`student.status_change`). Assignments and memberships are left as they are; A48 blocks a non-ACTIVE student at the student channel. The Telegram user id is never editable from the web; identity corrections (name, phone, student code) are audited as `student.update`.
+
+### A64. Course and group parents are fixed
+A course keeps its program and academic year; a group keeps its course. Only number/name (course) and name/code (group) are editable, because memberships and internships point at these rows.
+
+### A65. University settings
+Admin may change the university name and timezone (`university.update`). Stored instants are UTC (A51), so nothing is rewritten; only display and the reading of new local dates follow the new timezone.
+
+### A66. Supervisor last sign-in comes from the audit log
+There is no `last_login_at` column. The supervisor detail page reads the latest `auth.login` audit row.
+
+### A67. Student read contract for Phase 3
+`StudentContextService` answers by Telegram user id only: unknown, INACTIVE, BLOCKED students and students whose user account is not ACTIVE all get the same "access denied". `activeAssignment()` counts only ACTIVE (not PENDING) and otherwise raises "Sizda hozir faol amaliyot biriktirilmagan." (§64). No organization coordinates or radius leave it.
+
+## Phases 3–7 readings
+
+### A68. System adjustments are not location checks
+Events written by the system or by a manual correction (`SYSTEM_ADJUSTMENT`, `MANUAL_*`) carry verification `NOT_APPLICABLE`. They never claim a location was verified.
+
+### A69. Multiple sessions per day are locked off
+`multiple_sessions_allowed` defaults to false and cannot be turned on: the policy request rule is `declined`, `AttendancePolicyService::normalize()` refuses a true value, PostgreSQL has `CHECK attendance_policies_single_session (multiple_sessions_allowed = false)`, and the policy screen shows the switch disabled. A second check-in on a day that already has a session is refused (D3).
+
+### A70. Expected days
+Every calendar day inside an ACTIVE assignment's range is an expected day. There is no work-calendar or weekend table in MVP; a day with no attempt in that range is ABSENT.
+
+### A71. Check-out disabled
+When the resolved policy turns check-out off, a verified check-in creates a COMPLETED session of 0 seconds. With minimum duration on, that day is PARTIAL.
+
+### A72. Missing device accuracy
+A location without `horizontal_accuracy` passes the accuracy check. The null is stored as evidence (TEST-PLAN §1).
+
+### A73. Rate limits
+Bot actions 20 per minute per Telegram user; attendance actions 6 per minute per student; invite joins 5 per minute per Telegram user; wrong webhook secret 120 per minute per IP; report exports 5 per minute per user; change requests 10 per minute per user (A61). The limits only stop floods; the database constraints stay the real guards.
+
+### A74. Forwarded locations and venues
+A forwarded location or a venue is not a live share from the student. It is stored as an `INVALID_LOCATION` failed event with metadata `forwarded` and never opens a session.
+
+### A75. Manual correction times
+For a manual correction, `occurred_at` is the corrected attendance time chosen by the admin; `created_at` is when the row was written. Originals stay untouched and the correction is audited.
+
+### A76. Join confirmation and list buttons
+Onboarding asks for confirmation in a `JOIN_CONFIRM` state before writing the student. Organization buttons in the change-request dialog carry the list index, not the database id; a stale or foreign index is answered with "list changed" and nothing is written.
+
+### A77. Stale open sessions
+`attendance:close-stale` (every 15 minutes) closes sessions left OPEN after the local day ends; the day stays INCOMPLETE. A check-in on the next day closes yesterday's open session the same way first.
+
+### A78. Report range and filters
+Day reports and exports cover at most 62 days (`AttendanceDayQuery::MAX_RANGE_DAYS`). Export filters are read from the POST body. Day status has one SQL formula (`AttendanceDayQuery::STATUS_SQL`) used by dashboards, reports, CSV and the bot.
+
+### A79. Notifications
+Student notifications (assignment changes, change-request decisions) are queued after commit and are idempotent by a unique key, so a rolled-back transaction never notifies and a retry never sends twice. Blocked students are skipped; failures are recorded.
+
+### A80. Operations
+`GET /health` checks the database and the cache and is used by the nginx health check. PostgreSQL JIT is turned off per application connection (`SET jit = off`): measured at 1,000 students it added about 0.5 s of compile time to each report query and saved nothing. Forwarded headers are trusted only from `TRUSTED_PROXIES` (empty trusts none). The redis queue `retry_after` is 660 seconds, above the worker `--timeout=620`. The PostGIS migration's `down()` keeps the extension when other PostGIS extensions depend on it. The 100 m boundary test uses 99.9999 m because projecting a point exactly 100 m away round-trips to a hair above 100 m in floating point; the `ST_DWithin` decision itself is unchanged (ATTENDANCE-RULES §5).

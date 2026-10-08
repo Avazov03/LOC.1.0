@@ -1,0 +1,785 @@
+<?php
+
+namespace App\Telegram;
+
+use App\Enums\ActiveStatus;
+use App\Enums\ChangeRequestStatus;
+use App\Enums\ChangeRequestType;
+use App\Enums\EventSource;
+use App\Exceptions\BusinessRuleException;
+use App\Models\InternshipChangeRequest;
+use App\Models\Organization;
+use App\Models\StudentProfile;
+use App\Models\TelegramConversation;
+use App\Services\Attendance\AttendanceDayQuery;
+use App\Services\Attendance\AttendanceOutcome;
+use App\Services\Attendance\AttendanceService;
+use App\Services\Attendance\LocationInput;
+use App\Services\ChangeRequests\InternshipChangeRequestService;
+use App\Services\Internships\InviteService;
+use App\Services\Onboarding\OnboardingException;
+use App\Services\Onboarding\StudentOnboardingService;
+use App\Services\Students\StudentAccessException;
+use App\Services\Students\StudentContextService;
+use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
+
+/**
+ * Student bot dialogs (TELEGRAM-FLOW). Parses intent, calls application services, formats replies.
+ * Holds no attendance, geofence or assignment rule of its own.
+ */
+class BotHandler
+{
+    public const JOIN_NAME = 'JOIN_NAME';
+
+    public const JOIN_SURNAME = 'JOIN_SURNAME';
+
+    public const JOIN_PHONE = 'JOIN_PHONE';
+
+    public const JOIN_STUDENT_CODE = 'JOIN_STUDENT_CODE';
+
+    public const JOIN_CONFIRM = 'JOIN_CONFIRM';
+
+    public const AWAIT_CHECKIN_LOCATION = 'AWAIT_CHECKIN_LOCATION';
+
+    public const AWAIT_CHECKOUT_LOCATION = 'AWAIT_CHECKOUT_LOCATION';
+
+    public const CHANGE_REASON = 'CHANGE_REASON';
+
+    public const CHANGE_KIND = 'CHANGE_KIND';
+
+    public const CHANGE_EXISTING_ORG = 'CHANGE_EXISTING_ORG';
+
+    public const CHANGE_NEW_NAME = 'CHANGE_NEW_NAME';
+
+    public const CHANGE_NEW_ADDRESS = 'CHANGE_NEW_ADDRESS';
+
+    public const CHANGE_NEW_CONTACT = 'CHANGE_NEW_CONTACT';
+
+    /** A39: check-in and check-out attempts per student per minute. */
+    public const ATTENDANCE_PER_MINUTE = 6;
+
+    /** /start attempts with a token per Telegram user per minute. */
+    public const JOIN_PER_MINUTE = 5;
+
+    private const ORGANIZATION_LIST_LIMIT = 30;
+
+    private const HISTORY_DAYS = 7;
+
+    public function __construct(
+        private readonly StudentContextService $context,
+        private readonly StudentOnboardingService $onboarding,
+        private readonly AttendanceService $attendance,
+        private readonly AttendanceDayQuery $days,
+        private readonly InternshipChangeRequestService $changes,
+        private readonly ConversationStore $conversations,
+    ) {}
+
+    /**
+     * @return list<Reply>
+     */
+    public function handle(Update $update): array
+    {
+        if ($update->callbackId !== null) {
+            return $this->callback($update);
+        }
+
+        $text = trim((string) $update->text);
+        if ($text === '/start' || str_starts_with($text, '/start ')) {
+            return $this->start($update, trim(substr($text, 6)));
+        }
+
+        $conversation = $this->conversations->get($update->userId);
+        $action = Keyboard::action($text);
+
+        if ($action === 'cancel') {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, BotText::CANCELLED, $this->isRegistered($update->userId) ? Keyboard::menu() : Keyboard::remove())];
+        }
+
+        if ($conversation !== null && str_starts_with($conversation->state, 'JOIN_')) {
+            return $this->join($update, $conversation, $action);
+        }
+
+        // A menu button from any other dialog cancels that dialog and writes nothing (TELEGRAM-FLOW §9).
+        if ($action !== null && in_array($action, Keyboard::MENU_ACTIONS, true)) {
+            if ($conversation !== null) {
+                $this->conversations->clear($update->userId);
+            }
+
+            return $this->menu($update, $action);
+        }
+
+        if ($update->location !== null) {
+            return $this->location($update, $conversation);
+        }
+
+        if ($conversation !== null) {
+            return $this->dialog($update, $conversation, $action, $text);
+        }
+
+        $student = $this->activeStudent($update->userId);
+        if ($student === null) {
+            return [$this->reply($update, $this->isRegistered($update->userId) ? BotText::ACCESS_DENIED : BotText::NEED_INVITE, Keyboard::remove())];
+        }
+
+        return [$this->reply($update, BotText::UNKNOWN, Keyboard::menu())];
+    }
+
+    // ---------------------------------------------------------------- onboarding
+
+    /**
+     * @return list<Reply>
+     */
+    private function start(Update $update, string $token): array
+    {
+        $existing = StudentProfile::query()->where('telegram_user_id', $update->userId)->first();
+        if ($existing !== null) {
+            // Repeated /start, with or without a token, never creates a second student.
+            $this->conversations->clear($update->userId);
+            if ($this->activeStudent($update->userId) === null) {
+                return [$this->reply($update, BotText::ACCESS_DENIED, Keyboard::remove())];
+            }
+
+            return [$this->reply($update, BotText::ALREADY_REGISTERED."\n\n".BotText::UNKNOWN, Keyboard::menu())];
+        }
+
+        if ($token === '') {
+            return [$this->reply($update, BotText::NEED_INVITE, Keyboard::remove())];
+        }
+
+        $key = 'tg-join:'.$update->userId;
+        if (RateLimiter::tooManyAttempts($key, self::JOIN_PER_MINUTE)) {
+            return [$this->reply($update, BotText::RATE_LIMITED)];
+        }
+        RateLimiter::hit($key, 60);
+
+        if (! preg_match('/^[A-Za-z0-9_-]{8,128}$/', $token)) {
+            return [$this->reply($update, (new OnboardingException(OnboardingException::INVALID_INVITE))->getMessage(), Keyboard::remove())];
+        }
+
+        $hash = InviteService::hash($token);
+        try {
+            $invite = $this->onboarding->contextByHash($hash);
+        } catch (OnboardingException $exception) {
+            return [$this->reply($update, $exception->getMessage(), Keyboard::remove())];
+        }
+
+        $this->conversations->put($update->userId, self::JOIN_NAME, ['h' => $hash]);
+
+        return [$this->reply($update, BotText::lines([
+            'Assalomu alaykum!',
+            "Siz {$invite['course']} {$invite['group']} amaliyotiga qo‘shilmoqdasiz.",
+            "{$invite['university']}, {$invite['program']}.",
+            'Amaliyot muddati: '.$this->date($invite['period_start']).' — '.$this->date($invite['period_end']).'.',
+            '',
+            'Ismingizni yozing:',
+        ]), Keyboard::reply([[Keyboard::CANCEL]]))];
+    }
+
+    /**
+     * @return list<Reply>
+     */
+    private function join(Update $update, TelegramConversation $conversation, ?string $action): array
+    {
+        $context = $conversation->context ?? [];
+        $text = trim((string) $update->text);
+        $cancel = Keyboard::reply([[Keyboard::CANCEL]]);
+
+        switch ($conversation->state) {
+            case self::JOIN_NAME:
+            case self::JOIN_SURNAME:
+                if (! $this->validName($text) || $action !== null) {
+                    return [$this->reply($update, 'Iltimos, faqat harflardan iborat haqiqiy '.($conversation->state === self::JOIN_NAME ? 'ismingizni' : 'familiyangizni').' yozing (2–60 belgi).', $cancel)];
+                }
+                if ($conversation->state === self::JOIN_NAME) {
+                    $this->conversations->put($update->userId, self::JOIN_SURNAME, [...$context, 'first_name' => $this->cleanName($text)]);
+
+                    return [$this->reply($update, 'Familiyangizni yozing:', $cancel)];
+                }
+                $this->conversations->put($update->userId, self::JOIN_PHONE, [...$context, 'last_name' => $this->cleanName($text)]);
+
+                return [$this->reply($update, 'Telefon raqamingizni «📱 Raqamni yuborish» tugmasi orqali yuboring yoki +998901234567 ko‘rinishida yozing:', Keyboard::contact())];
+
+            case self::JOIN_PHONE:
+                if ($update->contact !== null) {
+                    if ($update->contact['user_id'] !== null && $update->contact['user_id'] !== $update->userId) {
+                        return [$this->reply($update, 'Faqat o‘zingizning telefon raqamingizni yuboring.', Keyboard::contact())];
+                    }
+                    $phone = $this->normalizePhone($update->contact['phone']);
+                } else {
+                    $phone = $this->normalizePhone($text);
+                }
+                if ($phone === null) {
+                    return [$this->reply($update, 'Telefon raqami noto‘g‘ri. Masalan: +998901234567', Keyboard::contact())];
+                }
+                $this->conversations->put($update->userId, self::JOIN_STUDENT_CODE, [...$context, 'phone' => $phone]);
+
+                return [$this->reply($update, 'Talaba ID raqamingizni yozing yoki «⏭ O‘tkazib yuborish» tugmasini bosing:', Keyboard::reply([[Keyboard::SKIP], [Keyboard::CANCEL]]))];
+
+            case self::JOIN_STUDENT_CODE:
+                $code = null;
+                if ($action !== 'skip') {
+                    if (! preg_match('/^[\p{L}\p{N}\/._-]{2,32}$/u', $text)) {
+                        return [$this->reply($update, 'Talaba ID 2–32 belgidan iborat bo‘lsin (harf, raqam, - / . _). Yoki «⏭ O‘tkazib yuborish»ni bosing.', Keyboard::reply([[Keyboard::SKIP], [Keyboard::CANCEL]]))];
+                    }
+                    $code = $text;
+                }
+                $context = [...$context, 'student_code' => $code];
+                $this->conversations->put($update->userId, self::JOIN_CONFIRM, $context);
+
+                return [$this->confirmPrompt($update, $context)];
+
+            case self::JOIN_CONFIRM:
+                if ($action === 'restart') {
+                    $this->conversations->put($update->userId, self::JOIN_NAME, ['h' => $context['h'] ?? '']);
+
+                    return [$this->reply($update, 'Ismingizni yozing:', $cancel)];
+                }
+                if ($action !== 'confirm') {
+                    return [$this->confirmPrompt($update, $context)];
+                }
+
+                return $this->completeJoin($update, $context);
+        }
+
+        $this->conversations->clear($update->userId);
+
+        return [$this->reply($update, BotText::NEED_INVITE, Keyboard::remove())];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return list<Reply>
+     */
+    private function completeJoin(Update $update, array $context): array
+    {
+        try {
+            $this->onboarding->joinByHash(
+                (string) ($context['h'] ?? ''),
+                $update->userId,
+                (string) $context['first_name'],
+                (string) $context['last_name'],
+                (string) $context['phone'],
+                $context['student_code'] ?? null,
+            );
+        } catch (OnboardingException $exception) {
+            if ($exception->reason === OnboardingException::STUDENT_CODE_TAKEN) {
+                $this->conversations->put($update->userId, self::JOIN_STUDENT_CODE, $context);
+
+                return [$this->reply($update, $exception->getMessage().' Boshqa ID yozing yoki «⏭ O‘tkazib yuborish»ni bosing.', Keyboard::reply([[Keyboard::SKIP], [Keyboard::CANCEL]]))];
+            }
+            $this->conversations->clear($update->userId);
+            $registered = $exception->reason === OnboardingException::ALREADY_REGISTERED && $this->activeStudent($update->userId) !== null;
+
+            return [$this->reply($update, $exception->getMessage(), $registered ? Keyboard::menu() : Keyboard::remove())];
+        }
+
+        $this->conversations->clear($update->userId);
+
+        return [$this->reply($update, BotText::lines([
+            '✅ Ro‘yxatdan o‘tdingiz!',
+            '',
+            'Amaliyot joyingiz biriktirilgach, sizga xabar beramiz. Shundan so‘ng «🟢 Amaliyotni boshlash» orqali davomatni qayd etasiz.',
+        ]), Keyboard::menu())];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    private function confirmPrompt(Update $update, array $context): Reply
+    {
+        return $this->reply($update, BotText::lines([
+            'Ma’lumotlaringizni tekshiring:',
+            '',
+            'Ism: '.$context['first_name'],
+            'Familiya: '.$context['last_name'],
+            'Telefon: '.$context['phone'],
+            'Talaba ID: '.($context['student_code'] ?? '—'),
+            '',
+            'Hammasi to‘g‘ri bo‘lsa «✅ Tasdiqlash»ni bosing.',
+        ]), Keyboard::reply([[Keyboard::CONFIRM], [Keyboard::RESTART, Keyboard::CANCEL]]));
+    }
+
+    // ---------------------------------------------------------------- menu
+
+    /**
+     * @return list<Reply>
+     */
+    private function menu(Update $update, string $action): array
+    {
+        try {
+            $student = $this->context->student($update->userId);
+        } catch (StudentAccessException) {
+            return [$this->reply($update, $this->isRegistered($update->userId) ? BotText::ACCESS_DENIED : BotText::NEED_INVITE, Keyboard::remove())];
+        }
+
+        return match ($action) {
+            'internship' => [$this->internship($update)],
+            'start' => $this->beginAttendance($update, $student, true),
+            'finish' => $this->beginAttendance($update, $student, false),
+            'attendance' => [$this->history($update, $student)],
+            'change' => $this->changeStart($update, $student),
+            'profile' => [$this->profile($update)],
+            'help' => [$this->reply($update, BotText::HELP, Keyboard::menu())],
+            default => [$this->reply($update, BotText::UNKNOWN, Keyboard::menu())],
+        };
+    }
+
+    private function internship(Update $update): Reply
+    {
+        $assignment = $this->context->profile($update->userId)['assignment'];
+        if ($assignment === null) {
+            return $this->reply($update, 'Sizga hali amaliyot joyi biriktirilmagan. Biriktirilgach, sizga xabar beramiz.', Keyboard::menu());
+        }
+
+        return $this->reply($update, BotText::lines([
+            '📋 Mening amaliyotim',
+            '',
+            '🏢 '.$assignment['organization'],
+            $assignment['address'] ? '📍 Manzil: '.$assignment['address'] : null,
+            '📅 Muddat: '.$assignment['start_at'].' — '.$assignment['end_at'],
+            $assignment['supervisor'] ? '👨‍🏫 Rahbar: '.$assignment['supervisor'] : null,
+            'Holat: '.($assignment['status'] === 'ACTIVE' ? 'faol' : 'boshlanishi kutilmoqda'),
+        ]), Keyboard::menu());
+    }
+
+    private function profile(Update $update): Reply
+    {
+        $profile = $this->context->profile($update->userId);
+
+        return $this->reply($update, BotText::lines([
+            '👤 Profilim',
+            '',
+            'F.I.Sh.: '.$profile['name'],
+            'Telefon: '.$profile['phone'],
+            'Universitet: '.$profile['university'],
+            $profile['program'] ? 'Yo‘nalish: '.$profile['program'] : null,
+            $profile['course'] || $profile['group'] ? 'Kurs / guruh: '.trim(($profile['course'] ?? '').' '.($profile['group'] ?? '')) : null,
+            'Talaba ID: '.($profile['student_code'] ?? '—'),
+            'Holat: faol',
+        ]), Keyboard::menu());
+    }
+
+    private function history(Update $update, StudentProfile $student): Reply
+    {
+        $student->loadMissing('university');
+        $tz = $student->university->timezone;
+        $today = CarbonImmutable::parse($student->university->today());
+        $dates = AttendanceDayQuery::dateRange($today->subDays(self::HISTORY_DAYS - 1)->toDateString(), $today->toDateString());
+
+        $rows = $this->days->rows(StudentProfile::query()->whereKey($student->id), $dates, $tz)
+            ->whereNotNull('day_status')
+            ->orderByDesc('local_date')
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return $this->reply($update, '📅 So‘nggi '.self::HISTORY_DAYS.' kunda davomat yozuvi yo‘q.', Keyboard::menu());
+        }
+
+        $icons = ['PRESENT' => '✅', 'PARTIAL' => '🟡', 'INCOMPLETE' => '⏳', 'LOCATION_REJECTED' => '📍', 'ABSENT' => '❌'];
+        $labels = ['PRESENT' => 'Keldi', 'PARTIAL' => 'Qisman', 'INCOMPLETE' => 'Yakunlanmagan', 'LOCATION_REJECTED' => 'Joylashuv rad etildi', 'ABSENT' => 'Kelmadi'];
+        $lines = ['📅 Davomatim (so‘nggi '.self::HISTORY_DAYS.' kun)', ''];
+        foreach ($rows as $row) {
+            $date = CarbonImmutable::parse((string) $row->local_date)->format('d.m');
+            $line = "{$date} — {$icons[$row->day_status]} {$labels[$row->day_status]}";
+            if ($row->first_check_in !== null) {
+                $in = CarbonImmutable::parse($row->first_check_in, 'UTC')->setTimezone($tz)->format('H:i');
+                $out = $row->last_check_out !== null ? CarbonImmutable::parse($row->last_check_out, 'UTC')->setTimezone($tz)->format('H:i') : '—';
+                $line .= "\n      {$in} – {$out}";
+                if ((int) $row->completed_seconds > 0) {
+                    $line .= ' ('.BotText::duration((int) $row->completed_seconds).')';
+                }
+            }
+            $lines[] = $line;
+        }
+
+        return $this->reply($update, implode("\n", $lines), Keyboard::menu());
+    }
+
+    // ---------------------------------------------------------------- attendance
+
+    /**
+     * @return list<Reply>
+     */
+    private function beginAttendance(Update $update, StudentProfile $student, bool $checkIn): array
+    {
+        if ($limited = $this->attendanceLimited($update, $student)) {
+            return [$limited];
+        }
+
+        $outcome = $checkIn ? $this->attendance->prepareCheckIn($student) : $this->attendance->prepareCheckOut($student);
+        if ($outcome->code !== AttendanceOutcome::READY) {
+            return [$this->reply($update, BotText::outcome($outcome), Keyboard::menu())];
+        }
+
+        // A49: an admin turned location off for this scope, so the action completes without a location.
+        if (! $outcome->data['location_required']) {
+            $result = $checkIn
+                ? $this->attendance->checkIn($student, null, EventSource::Telegram, $update->updateId)
+                : $this->attendance->checkOut($student, null, EventSource::Telegram, $update->updateId);
+
+            return [$this->reply($update, BotText::outcome($result), Keyboard::menu())];
+        }
+
+        $this->conversations->put($update->userId, $checkIn ? self::AWAIT_CHECKIN_LOCATION : self::AWAIT_CHECKOUT_LOCATION);
+
+        return [$this->reply($update, BotText::ASK_LOCATION, Keyboard::location())];
+    }
+
+    /**
+     * @return list<Reply>
+     */
+    private function location(Update $update, ?TelegramConversation $conversation): array
+    {
+        $state = $conversation?->state;
+        if (in_array($state, [self::CHANGE_REASON, self::CHANGE_KIND, self::CHANGE_EXISTING_ORG, self::CHANGE_NEW_NAME, self::CHANGE_NEW_ADDRESS, self::CHANGE_NEW_CONTACT], true)) {
+            return [$this->reply($update, BotText::NO_COORDINATES)];
+        }
+        if ($state !== self::AWAIT_CHECKIN_LOCATION && $state !== self::AWAIT_CHECKOUT_LOCATION) {
+            // A location with no waiting action is ignored and never becomes attendance (TELEGRAM-FLOW §9).
+            $student = $this->activeStudent($update->userId);
+
+            return [$this->reply($update, $student ? BotText::LOCATION_WITHOUT_ACTION : ($this->isRegistered($update->userId) ? BotText::ACCESS_DENIED : BotText::NEED_INVITE), $student ? Keyboard::menu() : Keyboard::remove())];
+        }
+
+        try {
+            $student = $this->context->student($update->userId);
+        } catch (StudentAccessException) {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, BotText::ACCESS_DENIED, Keyboard::remove())];
+        }
+        if ($limited = $this->attendanceLimited($update, $student)) {
+            return [$limited];
+        }
+
+        $input = new LocationInput(
+            $update->location['latitude'],
+            $update->location['longitude'],
+            $update->location['accuracy'],
+            $update->forwarded,
+            $update->location['live'],
+            $update->messageDate,
+        );
+        $outcome = $state === self::AWAIT_CHECKIN_LOCATION
+            ? $this->attendance->checkIn($student, $input, EventSource::Telegram, $update->updateId)
+            : $this->attendance->checkOut($student, $input, EventSource::Telegram, $update->updateId);
+
+        if ($outcome->retryable()) {
+            $this->conversations->put($update->userId, $state);
+
+            return [$this->reply($update, BotText::outcome($outcome), Keyboard::location())];
+        }
+        $this->conversations->clear($update->userId);
+
+        return [$this->reply($update, BotText::outcome($outcome), Keyboard::menu())];
+    }
+
+    private function attendanceLimited(Update $update, StudentProfile $student): ?Reply
+    {
+        $key = 'tg-attendance:'.$student->id;
+        if (RateLimiter::tooManyAttempts($key, self::ATTENDANCE_PER_MINUTE)) {
+            return $this->reply($update, BotText::RATE_LIMITED, Keyboard::menu());
+        }
+        RateLimiter::hit($key, 60);
+
+        return null;
+    }
+
+    // ---------------------------------------------------------------- change request
+
+    /**
+     * @return list<Reply>
+     */
+    private function changeStart(Update $update, StudentProfile $student): array
+    {
+        try {
+            $this->context->activeAssignment($update->userId);
+        } catch (StudentAccessException) {
+            return [$this->reply($update, 'Sizda o‘zgartiriladigan faol amaliyot joyi yo‘q.', Keyboard::menu())];
+        }
+
+        $pending = $this->pendingRequest($student);
+        if ($pending !== null) {
+            $target = $pending->request_type === ChangeRequestType::ExistingOrganization
+                ? $pending->requestedOrganization?->name
+                : ($pending->requested_organization_data['name'] ?? null);
+
+            return [$this->reply($update, BotText::lines([
+                '🔄 Sizda ko‘rib chiqilayotgan so‘rov bor.',
+                '',
+                $target ? 'So‘ralgan joy: '.$target : null,
+                'Yuborilgan: '.$pending->created_at->setTimezone($student->university->timezone)->format('d.m.Y H:i'),
+                'Holat: ko‘rib chiqilmoqda',
+                '',
+                'Ikkinchi so‘rov ochilmaydi. Kerak bo‘lsa, bu so‘rovni bekor qiling.',
+            ]), Keyboard::inline([[['text' => '❌ So‘rovni bekor qilish', 'callback_data' => 'cr:cancel']]]))];
+        }
+
+        $this->conversations->put($update->userId, self::CHANGE_REASON);
+
+        return [$this->reply($update, 'Nima uchun amaliyot joyini o‘zgartirmoqchisiz? Sababni yozing:', Keyboard::reply([[Keyboard::CANCEL]]))];
+    }
+
+    /**
+     * @return list<Reply>
+     */
+    private function dialog(Update $update, TelegramConversation $conversation, ?string $action, string $text): array
+    {
+        $state = $conversation->state;
+        $context = $conversation->context ?? [];
+        $cancel = Keyboard::reply([[Keyboard::CANCEL]]);
+
+        if ($state === self::AWAIT_CHECKIN_LOCATION || $state === self::AWAIT_CHECKOUT_LOCATION) {
+            return [$this->reply($update, BotText::outcome(new AttendanceOutcome(AttendanceOutcome::LOCATION_MISSING)), Keyboard::location())];
+        }
+
+        $student = $this->activeStudent($update->userId);
+        if ($student === null) {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, BotText::ACCESS_DENIED, Keyboard::remove())];
+        }
+
+        if ($text !== '' && $this->containsCoordinates($text)) {
+            return [$this->reply($update, BotText::NO_COORDINATES, $cancel)];
+        }
+
+        switch ($state) {
+            case self::CHANGE_REASON:
+                if (mb_strlen($text) < 5) {
+                    return [$this->reply($update, 'Sababni batafsilroq yozing (kamida 5 belgi).', $cancel)];
+                }
+                $this->conversations->put($update->userId, self::CHANGE_KIND, ['reason' => mb_substr($text, 0, 1000)]);
+
+                return [$this->reply($update, 'Qaysi tashkilotga o‘tmoqchisiz?', Keyboard::reply([[Keyboard::KIND_EXISTING, Keyboard::KIND_NEW], [Keyboard::CANCEL]]))];
+
+            case self::CHANGE_KIND:
+                if ($action === 'kind_existing') {
+                    return $this->organizationList($update, $student, $context, null);
+                }
+                if ($action === 'kind_new') {
+                    $this->conversations->put($update->userId, self::CHANGE_NEW_NAME, $context);
+
+                    return [$this->reply($update, 'Yangi tashkilot nomini yozing:', $cancel)];
+                }
+
+                return [$this->reply($update, 'Variantlardan birini tanlang.', Keyboard::reply([[Keyboard::KIND_EXISTING, Keyboard::KIND_NEW], [Keyboard::CANCEL]]))];
+
+            case self::CHANGE_EXISTING_ORG:
+                return $this->organizationList($update, $student, $context, $text);
+
+            case self::CHANGE_NEW_NAME:
+                if (mb_strlen($text) < 2) {
+                    return [$this->reply($update, 'Tashkilot nomini yozing.', $cancel)];
+                }
+                $this->conversations->put($update->userId, self::CHANGE_NEW_ADDRESS, [...$context, 'name' => mb_substr($text, 0, 255)]);
+
+                return [$this->reply($update, 'Tashkilot manzilini yozing (shahar, tuman, ko‘cha):', $cancel)];
+
+            case self::CHANGE_NEW_ADDRESS:
+                if (mb_strlen($text) < 5) {
+                    return [$this->reply($update, 'Manzilni to‘liqroq yozing.', $cancel)];
+                }
+                $this->conversations->put($update->userId, self::CHANGE_NEW_CONTACT, [...$context, 'address' => mb_substr($text, 0, 255)]);
+
+                return [$this->reply($update, 'Mas’ul shaxs ismi va telefon raqamini yozing (masalan: Aliyev Vali +998901234567) yoki «⏭ O‘tkazib yuborish»ni bosing:', Keyboard::reply([[Keyboard::SKIP], [Keyboard::CANCEL]]))];
+
+            case self::CHANGE_NEW_CONTACT:
+                $data = ['name' => $context['name'] ?? '', 'address' => $context['address'] ?? ''];
+                if ($action !== 'skip' && $text !== '') {
+                    if (preg_match('/\+?\d[\d\s()-]{7,}\d/', $text, $match)) {
+                        $data['contact_phone'] = $this->normalizePhone($match[0]) ?? trim($match[0]);
+                        $text = trim(str_replace($match[0], '', $text), " ,;-\t");
+                    }
+                    if ($text !== '') {
+                        $data['contact_name'] = mb_substr($text, 0, 255);
+                    }
+                }
+
+                return $this->submitRequest($update, fn () => $this->changes->openNew($student->user, $student->id, $data, (string) ($context['reason'] ?? '')), true);
+        }
+
+        $this->conversations->clear($update->userId);
+
+        return [$this->reply($update, BotText::UNKNOWN, Keyboard::menu())];
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     * @return list<Reply>
+     */
+    private function organizationList(Update $update, StudentProfile $student, array $context, ?string $search): array
+    {
+        $current = $student->openAssignment()->value('organization_id');
+        $query = Organization::query()
+            ->where('university_id', $student->university_id)
+            ->where('status', ActiveStatus::Active->value)
+            ->when($current, fn ($q) => $q->where('id', '<>', $current))
+            ->orderBy('name');
+
+        if ($search !== null && $search !== '') {
+            $like = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], mb_strtolower($search)).'%';
+            $query->whereRaw('LOWER(name) LIKE ?', [$like]);
+        }
+
+        $total = (clone $query)->count();
+        if ($total === 0) {
+            $this->conversations->put($update->userId, self::CHANGE_EXISTING_ORG, [...$context, 'ids' => []]);
+
+            return [$this->reply($update, $search === null
+                ? 'Tanlash mumkin bo‘lgan faol tashkilot yo‘q. «✖️ Bekor qilish»ni bosib, «➕ Yangi tashkilot» variantini tanlang.'
+                : 'Bu nom bo‘yicha tashkilot topilmadi. Boshqa so‘z bilan qidiring.', Keyboard::reply([[Keyboard::CANCEL]]))];
+        }
+        if ($search === null && $total > self::ORGANIZATION_LIST_LIMIT) {
+            $this->conversations->put($update->userId, self::CHANGE_EXISTING_ORG, [...$context, 'ids' => []]);
+
+            return [$this->reply($update, 'Tashkilotlar ko‘p. Tashkilot nomidan bir qismini yozing:', Keyboard::reply([[Keyboard::CANCEL]]))];
+        }
+
+        $organizations = $query->limit(self::ORGANIZATION_LIST_LIMIT)->get(['id', 'name']);
+        // Buttons carry a list position, not a database id (no internal ids leave the server).
+        $this->conversations->put($update->userId, self::CHANGE_EXISTING_ORG, [...$context, 'ids' => $organizations->pluck('id')->all()]);
+        $rows = $organizations->values()->map(fn (Organization $organization, int $index) => [['text' => mb_substr($organization->name, 0, 60), 'callback_data' => 'org:'.$index]])->all();
+
+        return [$this->reply($update, 'Tashkilotni tanlang:', Keyboard::inline($rows))];
+    }
+
+    // ---------------------------------------------------------------- callbacks
+
+    /**
+     * @return list<Reply>
+     */
+    private function callback(Update $update): array
+    {
+        $student = $this->activeStudent($update->userId);
+        if ($student === null) {
+            return [$this->reply($update, BotText::ACCESS_DENIED, Keyboard::remove())];
+        }
+        $data = (string) $update->callbackData;
+
+        if ($data === 'cr:cancel') {
+            $pending = $this->pendingRequest($student);
+            if ($pending === null) {
+                return [$this->reply($update, 'Bekor qilinadigan so‘rov yo‘q.', Keyboard::menu())];
+            }
+            try {
+                $this->changes->cancel($student->user, $pending->id);
+            } catch (BusinessRuleException $exception) {
+                return [$this->reply($update, $exception->getMessage(), Keyboard::menu())];
+            }
+
+            return [$this->reply($update, 'So‘rov bekor qilindi.', Keyboard::menu())];
+        }
+
+        if (preg_match('/^org:(\d{1,3})$/', $data, $match)) {
+            $conversation = $this->conversations->get($update->userId);
+            $ids = $conversation?->state === self::CHANGE_EXISTING_ORG ? ($conversation->context['ids'] ?? []) : [];
+            $organizationId = $ids[(int) $match[1]] ?? null;
+            if ($organizationId === null) {
+                return [$this->reply($update, 'Bu ro‘yxat eskirgan. «🔄 Amaliyot joyini o‘zgartirish»ni qayta bosing.', Keyboard::menu())];
+            }
+            $reason = (string) ($conversation->context['reason'] ?? '');
+
+            return $this->submitRequest($update, fn () => $this->changes->openExisting($student->user, $student->id, (int) $organizationId, $reason), false);
+        }
+
+        return [$this->reply($update, BotText::UNKNOWN, Keyboard::menu())];
+    }
+
+    /**
+     * @param  callable(): InternshipChangeRequest  $open
+     * @return list<Reply>
+     */
+    private function submitRequest(Update $update, callable $open, bool $newOrganization): array
+    {
+        try {
+            $open();
+        } catch (ValidationException $exception) {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, collect($exception->errors())->flatten()->first() ?? BotText::GENERIC_FAILURE, Keyboard::menu())];
+        } catch (BusinessRuleException $exception) {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, $exception->getMessage(), Keyboard::menu())];
+        }
+        $this->conversations->clear($update->userId);
+
+        return [$this->reply($update, BotText::lines([
+            '✅ So‘rovingiz yuborildi.',
+            $newOrganization ? 'Yangi tashkilot universitet tasdiqlamaguncha faol bo‘lmaydi.' : null,
+            'Qaror qabul qilingach, sizga xabar beramiz.',
+        ]), Keyboard::menu())];
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    private function pendingRequest(StudentProfile $student): ?InternshipChangeRequest
+    {
+        return InternshipChangeRequest::query()
+            ->where('student_profile_id', $student->id)
+            ->where('status', ChangeRequestStatus::Pending->value)
+            ->with('requestedOrganization:id,name')
+            ->first();
+    }
+
+    private function activeStudent(int $telegramUserId): ?StudentProfile
+    {
+        try {
+            return $this->context->student($telegramUserId)->load(['user', 'university']);
+        } catch (StudentAccessException) {
+            return null;
+        }
+    }
+
+    private function isRegistered(int $telegramUserId): bool
+    {
+        return StudentProfile::query()->where('telegram_user_id', $telegramUserId)->exists();
+    }
+
+    private function validName(string $text): bool
+    {
+        return (bool) preg_match('/^[\p{L}][\p{L}\s\'’‘ʻʼ`-]{1,59}$/u', $text);
+    }
+
+    private function cleanName(string $text): string
+    {
+        return mb_convert_case(trim(preg_replace('/\s+/u', ' ', $text) ?? $text), MB_CASE_TITLE);
+    }
+
+    private function normalizePhone(string $raw): ?string
+    {
+        $digits = preg_replace('/\D+/', '', $raw) ?? '';
+        if (strlen($digits) === 9) {
+            $digits = '998'.$digits;
+        }
+        if (strlen($digits) < 10 || strlen($digits) > 15) {
+            return null;
+        }
+
+        return '+'.$digits;
+    }
+
+    private function containsCoordinates(string $text): bool
+    {
+        return (bool) preg_match('/-?\d{1,3}[.,]\d{4,}\s*[,; ]\s*-?\d{1,3}[.,]\d{4,}/', $text)
+            || (bool) preg_match('~(maps\.google|goo\.gl/maps|maps\.app\.goo\.gl|yandex\.[a-z]+/maps|2gis\.)~i', $text);
+    }
+
+    private function date(string $date): string
+    {
+        return CarbonImmutable::parse($date)->format('d.m.Y');
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $markup
+     */
+    private function reply(Update $update, string $text, ?array $markup = null): Reply
+    {
+        return new Reply($update->chatId, $text, $markup);
+    }
+}

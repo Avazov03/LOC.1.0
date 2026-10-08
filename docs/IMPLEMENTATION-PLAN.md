@@ -1,25 +1,27 @@
 # Implementation plan
 
-Phase 0 is this document set. Application code starts at Phase 1, and only after D1 is accepted. Later decisions block only the phase that needs them.
+Phase 0 is this document set. D1–D6 are final in `ASSUMPTIONS.md`. Later phases follow those decisions. They are not reopened in code.
 
 Do not skip a gate. Do not mark a phase done because the UI opens.
 
-## Phase 0 — this delivery
+Status: Phases 0–7 are implemented. Phase 1 is accepted. Phase 2 added internship management (A50–A67). Phases 3–7 added the Telegram bot, attendance with PostGIS, supervisor and admin attendance pages, reports and queued CSV, notifications, and the Docker production stack (A68–A80). Acceptance evidence is in `FINAL-ACCEPTANCE-MATRIX.md`; production steps are in `DEPLOYMENT.md`.
 
-**Done when:** repository inspection is written, the schema and flows are consistent with both authoritative documents, and D1–D5 are visible.
+## Phase 0 — locked
 
-**Not done here:** Laravel install, migrations, bot, UI.
+**Done when:** the audit in `ARCHITECTURE.md` matches the tree, D1–D6 are final, the ERD indexes name their queries, university scope is on the domain, and scale targets are written without a false performance claim.
+
+**Not done here:** new migrations, new screens, Telegram, attendance.
 
 **Exit report:** in the Phase 0 reply. Next phase does not start automatically.
 
 ## Phase 1 — Foundation
 
-**Blocked on:** D1 (membership history).
+**Decisions:** D1 is final. D6 requires Tailwind before more screens are added.
 
 **Build:**
 
-- `git init` only. No commit unless you ask.
-- Laravel 13 from the official React + Inertia starter kit.
+- Git already exists. No commit unless asked.
+- Laravel 13 with Inertia, React, TypeScript, and Tailwind. The staff shell is Tailwind only; Sneat vendor assets are removed.
 - Docker: app (PHP 8.4), nginx, `postgis/postgis` PostgreSQL 17, Redis 7, queue worker, scheduler.
 - `.env.example` with empty `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET`. No real secrets.
 - Session auth for admin and supervisor. Student role exists and has no web home.
@@ -27,13 +29,13 @@ Do not skip a gate. Do not mark a phase done because the UI opens.
 - Migrations for university, faculty, program, academic year, study year, group, users, student profile, supervisor profile, group membership.
 - Admin CRUD for that academic tree.
 - Seeder: one demo university, two faculties, two programs, one academic year, several courses and groups, one admin. No TDYU constants in PHP.
-- Tests: guest redirected, supervisor cannot open academic admin writes, admin can create a group, one active membership constraint.
+- Tests: guest redirected, inactive and student logins refused, login throttle, deactivated staff signed out, role matrix, cross-university 404, supervisor sees no university-wide data, migrations up/down, `users.university_id` not null, PostGIS extension, Redis cache and queue.
 
 **Gate:** migrations `up` and `down` on PostGIS, auth tests green, no Telegram and no attendance code yet.
 
 ## Phase 2 — Internship management
 
-**Blocked on:** D2 and D5.
+**Decisions:** D2 and D5 are final.
 
 **Build:**
 
@@ -62,7 +64,7 @@ Do not skip a gate. Do not mark a phase done because the UI opens.
 
 ## Phase 4 — Attendance
 
-**Blocked on:** D3 and D4.
+**Decisions:** D3 and D4 are final. Day status stays computed. Events stay immutable.
 
 **Build:**
 
@@ -103,7 +105,7 @@ Do not skip a gate. Do not mark a phase done because the UI opens.
 - Rate limits, security pass on IDOR and webhook, structured logs.
 - Index review against §82.
 - A documented backup and restore drill.
-- A measured check toward 1,000 students. The result is reported as a measurement, not a slogan.
+- A measured check toward 1,000 students, reported as a measurement. The 10,000-student and multi-university targets stay architectural until a later measurement is asked for. They do not add services.
 - Production notes: nginx, PHP-FPM, HTTPS, webhook URL, queue, scheduler.
 
 **Gate:** test plan sections 1–5 green. Out-of-scope features still absent.

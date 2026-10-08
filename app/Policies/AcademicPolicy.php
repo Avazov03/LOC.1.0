@@ -9,8 +9,6 @@ class AcademicPolicy
 {
     public function manage(User $user): bool
     {
-        return $user->isAdmin()
-            && $user->status === ActiveStatus::Active
-            && $user->university_id !== null;
+        return $user->isAdmin() && $user->status === ActiveStatus::Active;
     }
 }

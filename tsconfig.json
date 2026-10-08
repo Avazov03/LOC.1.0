@@ -15,9 +15,9 @@
         "isolatedModules": true,
         "noEmit": true,
         "jsx": "react-jsx",
-        "baseUrl": ".",
+        "types": ["vite/client"],
         "paths": {
-            "@/*": ["resources/js/*"]
+            "@/*": ["./resources/js/*"]
         }
     },
     "include": ["resources/js/**/*.ts", "resources/js/**/*.tsx"]

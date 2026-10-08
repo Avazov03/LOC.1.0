@@ -33,12 +33,15 @@ class HandleInertiaRequests extends Middleware
                     'name' => $user->name,
                     'login' => $user->login,
                     'role' => $user->role->value,
+                    'university' => $user->university?->name,
                 ] : null,
             ],
             'navigation' => $user instanceof User ? Navigation::for($user) : [],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
+                'invite_link' => fn () => $request->session()->get('invite_link'),
+                'assignment_results' => fn () => $request->session()->get('assignment_results'),
             ],
             'appName' => config('app.name'),
         ];

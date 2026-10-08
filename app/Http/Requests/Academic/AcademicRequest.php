@@ -41,8 +41,16 @@ class AcademicRequest extends FormRequest
                 'course_number' => ['required', 'integer', 'min:1', 'max:8'],
                 'name' => ['required', 'string', 'max:100'],
             ],
+            'study-years.update' => [
+                'course_number' => ['required', 'integer', 'min:1', 'max:8'],
+                'name' => ['required', 'string', 'max:100'],
+            ],
             'groups.store' => [
                 'study_year_id' => ['required', 'integer'],
+                'name' => ['required', 'string', 'max:100'],
+                'code' => ['required', 'string', 'max:32'],
+            ],
+            'groups.update' => [
                 'name' => ['required', 'string', 'max:100'],
                 'code' => ['required', 'string', 'max:32'],
             ],

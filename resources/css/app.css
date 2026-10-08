@@ -1,11 +1,102 @@
 @import 'tailwindcss';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
-@source '../**/*.blade.php';
-@source '../**/*.js';
+@source '../views/**/*.blade.php';
+@source '../js/**/*.{ts,tsx}';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@font-face {
+    font-family: 'Public Sans';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('../fonts/public-sans/latin-wght-normal.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Public Sans';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('../fonts/public-sans/latin-ext-wght-normal.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Visual tokens follow docs/design/01-DIZAYN-DNK.md (primary #696cff, Public Sans, light and dark). */
+:root {
+    --app-canvas: #f5f5f9;
+    --app-panel: #ffffff;
+    --app-line: #e4e6e8;
+    --app-heading: #384551;
+    --app-body: #646e78;
+    --app-muted: #a7acb2;
+    --app-shadow: 0 0.1875rem 0.5rem 0 rgb(34 48 62 / 0.1);
+}
+
+.dark {
+    --app-canvas: #232333;
+    --app-panel: #2b2c40;
+    --app-line: #444564;
+    --app-heading: #d5d5e2;
+    --app-body: #b2b2c4;
+    --app-muted: #7e7f96;
+    --app-shadow: 0 0.1875rem 0.5rem 0 rgb(20 20 29 / 0.3);
+}
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Public Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+    --color-primary-50: #f0f0ff;
+    --color-primary-100: #e7e7ff;
+    --color-primary-200: #cfd0ff;
+    --color-primary-300: #a8aaff;
+    --color-primary-400: #8789ff;
+    --color-primary-500: #696cff;
+    --color-primary-600: #5f61e6;
+    --color-primary-700: #4e50c4;
+    --color-primary-800: #3e409c;
+    --color-primary-900: #33357d;
+
+    --color-success: #71dd37;
+    --color-info: #03c3ec;
+    --color-warning: #ffab00;
+    --color-danger: #ff3e1d;
+    --color-secondary: #8592a3;
+}
+
+@theme inline {
+    --color-canvas: var(--app-canvas);
+    --color-panel: var(--app-panel);
+    --color-line: var(--app-line);
+    --color-heading: var(--app-heading);
+    --color-body: var(--app-body);
+    --color-muted: var(--app-muted);
+    --shadow-panel: var(--app-shadow);
+}
+
+@layer base {
+    html {
+        color-scheme: light;
+    }
+
+    html.dark {
+        color-scheme: dark;
+    }
+
+    body {
+        @apply bg-canvas font-sans text-[0.9375rem] leading-relaxed text-body antialiased;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5 {
+        @apply font-medium text-heading;
+    }
+
+    :focus-visible {
+        @apply outline-2 outline-offset-2 outline-primary-500;
+    }
 }

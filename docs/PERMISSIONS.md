@@ -1,6 +1,8 @@
 # Permissions
 
-Backend enforcement only. A hidden menu item is not a control. Out-of-scope ids return **404** for supervisors and students, so existence of another person’s record is not revealed. Admin receives normal 404 only when the row does not exist.
+Backend enforcement only. A hidden menu item is not a control. Every protected operation checks authentication, role, university, and scope. Out-of-scope ids return **404** for supervisors and students, so existence of another person’s record is not revealed. Admin receives normal 404 only when the row does not exist in that admin’s university.
+
+University ownership is a column, not a tenant product. A user of university A does not receive university B’s faculties, students, organizations, or attendance by changing an id. There is no student web route; student access is the Telegram profile resolved from `telegram_user_id`.
 
 Organization on-site contacts (§4.4) have no login.
 
@@ -103,4 +105,20 @@ Admin queries filter by `university_id` and then by the optional dashboard filte
 | Active student, no active assignment | Check-in | “Sizda hozir faol amaliyot biriktirilmagan.” (§64) |
 | Inactive staff | Login | Rejected |
 
-Policies are Laravel policy classes plus query scopes. Controllers do not reimplement ownership with a different condition.
+| Admin of university A | Any id from university B (internship, organization, supervisor, assignment, invite) | 404 |
+| Supervisor | Assign a student who is not a participant of their open-period internship | Row refused, nothing written |
+| Supervisor | Approve or reject a new-organization request | Approve refused, reject 403 |
+| Replaced supervisor | Former group or student page | 404 from the replacement date (A50) |
+| Supervisor | `/academic/students*`, `/settings`, `/supervisors/{id}`, `/organizations/{id}`, `PUT /internships/{id}`, `PUT /assignments/{id}` | 403 |
+| Admin of university A | Student, course, group, organization status, internship dates, assignment dates of university B | 404, nothing written |
+| Supervisor | `/my-students` | Only participants of internships with an open period; filters cannot widen it |
+| Admin | `/my-students` | 403 (supervisor page) |
+| Any user | More than 10 change requests per minute | 429 (A61) |
+| Supervisor | `/attendance`, `/reports`, `/attendance/students/{id}` in scope | 200, own scope only |
+| Supervisor | `/attendance/students/{id}` of another supervisor's student | 404 |
+| Supervisor | `/attendance/policies`, corrections, close-session | 403 |
+| Any user | Another user's export download | 404 |
+| Any user | More than 5 exports per minute | 429 (A73) |
+| Telegram | Webhook without or with a wrong secret | 404 when no secret is configured, otherwise 403; nothing written |
+
+Policies are Laravel policy classes plus query scopes. Controllers do not reimplement ownership with a different condition. From Phase 2 the scope lives in `App\Services\Access\AccessScope`; every service starts from its `internships()` or `students()` builder. Supervisor pages never receive organization coordinates or radius.

@@ -1,61 +1,91 @@
+import { Link, usePage } from '@inertiajs/react';
+import type { IconName } from '@/Components/Icon';
+import { Card, IconTile, type Tone } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
-import { usePage } from '@inertiajs/react';
 import type { SharedProps } from '@/types';
 
-type Stat = { label: string; value: number; icon: string; tone: string };
+type Stat = { label: string; value: number; icon: IconName; tone: Tone; href: string };
 
-export default function Dashboard({ stats, yearCount }: { stats: Stat[]; yearCount: number }) {
+const number = new Intl.NumberFormat('uz-UZ');
+
+type AttendanceTotals = Record<'PRESENT' | 'PARTIAL' | 'INCOMPLETE' | 'LOCATION_REJECTED' | 'ABSENT' | 'EXPECTED', number>;
+
+const attendanceCards: Array<{ key: keyof AttendanceTotals; label: string; icon: IconName; tone: Tone }> = [
+    { key: 'PRESENT', label: 'Keldi', icon: 'check', tone: 'success' },
+    { key: 'PARTIAL', label: 'Qisman', icon: 'clock', tone: 'info' },
+    { key: 'INCOMPLETE', label: 'Yakunlanmagan', icon: 'alert', tone: 'warning' },
+    { key: 'LOCATION_REJECTED', label: 'Joylashuv rad etildi', icon: 'mapPin', tone: 'danger' },
+    { key: 'ABSENT', label: 'Kelmadi', icon: 'ban', tone: 'secondary' },
+];
+
+export default function Dashboard({ stats, timezone, attendance, today }: { stats: Stat[]; timezone: string; attendance: AttendanceTotals; today: string }) {
     const { auth } = usePage<SharedProps>().props;
     const admin = auth.user?.role === 'ADMIN';
+    const empty = !admin && stats[0]?.value === 0;
 
     return (
         <AppLayout title="Boshqaruv">
             <div className="mb-6">
-                <h4 className="mb-1">Xush kelibsiz, {auth.user?.name}</h4>
-                <p className="text-body-secondary mb-0">
+                <h2 className="text-2xl">Xush kelibsiz, {auth.user?.name}</h2>
+                <p className="mt-1 text-muted">
                     {admin
-                        ? 'Akademik tuzilmani shu yerdan boshqarasiz. Amaliyot, davomat va Telegram keyingi bosqichlarda shu panelga ulanadi.'
-                        : 'Sizga biriktirilgan guruhlar va davomat shu paneldan ochiladi.'}
+                        ? 'Universitet bo‘yicha talabalar, amaliyot, biriktirishlar va so‘rovlar holati.'
+                        : 'Sizga biriktirilgan amaliyot guruhlari va talabalar holati.'}{' '}
+                    <span className="whitespace-nowrap">Vaqt zonasi: {timezone}.</span>
                 </p>
             </div>
-            {admin ? (
-                <div className="row g-6">
-                    {stats.map((stat) => (
-                        <div className="col-sm-6 col-xl-3" key={stat.label}>
-                            <div className="card h-100">
-                                <div className="card-body">
-                                    <div className="d-flex align-items-center justify-content-between">
-                                        <div>
-                                            <span className="d-block mb-1 text-body-secondary">{stat.label}</span>
-                                            <h4 className="mb-0">{stat.value.toLocaleString('uz-UZ')}</h4>
-                                        </div>
-                                        <span className={`avatar avatar-initial rounded bg-label-${stat.tone}`}>
-                                            <i className={`bx ${stat.icon}`} />
-                                        </span>
-                                    </div>
+
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+                {stats.map((stat) => (
+                    <Link key={stat.label} href={stat.href} className="group rounded-lg focus-visible:outline-2">
+                        <Card className="h-full p-6 transition group-hover:-translate-y-0.5">
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-sm text-muted">{stat.label}</p>
+                                    <p className="mt-1 text-2xl font-semibold text-heading tabular-nums">{number.format(stat.value)}</p>
                                 </div>
+                                <IconTile icon={stat.icon} tone={stat.tone} />
                             </div>
-                        </div>
+                        </Card>
+                    </Link>
+                ))}
+            </div>
+
+            <Card className="mt-6">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">
+                    <div>
+                        <h3 className="text-lg">Bugungi davomat</h3>
+                        <p className="text-sm text-muted">
+                            {today} · kutilgan talabalar: <span className="tabular-nums">{number.format(attendance.EXPECTED)}</span>
+                        </p>
+                    </div>
+                    <Link href="/attendance" className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-300">
+                        Batafsil →
+                    </Link>
+                </div>
+                <div className="grid gap-4 p-6 sm:grid-cols-3 xl:grid-cols-5">
+                    {attendanceCards.map((card) => (
+                        <Link
+                            key={card.key}
+                            href={`/attendance?status=${card.key}`}
+                            className="flex items-center gap-3 rounded-md border border-line p-4 transition hover:border-primary-500"
+                        >
+                            <IconTile icon={card.icon} tone={card.tone} />
+                            <div>
+                                <p className="text-xl font-semibold text-heading tabular-nums">{number.format(attendance[card.key])}</p>
+                                <p className="text-xs text-muted">{card.label}</p>
+                            </div>
+                        </Link>
                     ))}
-                    <div className="col-12">
-                        <div className="card">
-                            <div className="card-body">
-                                <h5 className="card-title">O‘quv yillari</h5>
-                                <p className="mb-0 text-body-secondary">{yearCount.toLocaleString('uz-UZ')} ta yil yozuvi. Tarix yilma-yil alohida saqlanadi.</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
-            ) : (
-                <div className="card">
-                    <div className="card-body text-center py-5">
-                        <span className="avatar avatar-initial rounded bg-label-primary mb-3">
-                            <i className="bx bx-group" />
-                        </span>
-                        <h5>Guruhlar hali biriktirilmagan</h5>
-                        <p className="text-body-secondary mb-0">Amaliyot guruhi va talabalar keyingi bosqichda shu yerga chiqadi. Hozircha faqat o‘z hisobingizni ko‘rasiz.</p>
-                    </div>
-                </div>
+            </Card>
+
+            {empty && (
+                <Card className="mt-6 px-6 py-12 text-center">
+                    <IconTile icon="users" tone="primary" className="mx-auto mb-4" />
+                    <h3 className="text-lg">Guruhlar hali biriktirilmagan</h3>
+                    <p className="mx-auto mt-1 max-w-md text-muted">Admin amaliyot guruhini sizga bog‘lagach, talabalar shu yerda chiqadi.</p>
+                </Card>
             )}
         </AppLayout>
     );

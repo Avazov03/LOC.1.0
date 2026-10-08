@@ -4,14 +4,15 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "typecheck": "tsc --noEmit"
     },
     "devDependencies": {
         "@tailwindcss/vite": "^4.0.0",
+        "@types/leaflet": "^1.9.22",
         "@types/react": "^19.3.0",
         "@types/react-dom": "^19.3.0",
         "@vitejs/plugin-react": "^5.1.1",
-        "axios": "^1.11.0",
         "concurrently": "^9.0.1",
         "laravel-vite-plugin": "^2.0.0",
         "tailwindcss": "^4.0.0",
@@ -20,7 +21,11 @@
     },
     "dependencies": {
         "@inertiajs/react": "^3.8.0",
+        "leaflet": "^1.9.4",
         "react": "^19.3.0",
         "react-dom": "^19.3.0"
+    },
+    "overrides": {
+        "shell-quote": "^1.11.0"
     }
 }

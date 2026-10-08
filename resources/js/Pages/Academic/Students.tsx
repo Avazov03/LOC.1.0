@@ -1,36 +1,37 @@
+import StudentList from '@/Components/StudentList';
+import { Card, CardHeader } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
+import type { Option, Paginated, StudentFilters, StudentRow } from '@/types';
 
-type Student = { id: number; name: string; phone: string; student_code: string | null; group: string | null; status: string };
-
-const labels: Record<string, string> = { ACTIVE: 'Faol', INACTIVE: 'Nofaol', BLOCKED: 'Bloklangan' };
-
-export default function Students({ students }: { students: Student[] }) {
+export default function Students({
+    students,
+    filters,
+    groups,
+    internships,
+}: {
+    students: Paginated<StudentRow>;
+    filters: StudentFilters;
+    groups: Option[];
+    internships: Option[];
+}) {
     return (
         <AppLayout title="Talabalar">
-            <div className="card">
-                <div className="card-header">
-                    <h5 className="card-title mb-1">Talabalar</h5>
-                    <p className="mb-0 text-body-secondary small">Talaba o‘zi tizimga Telegram taklif havolasi orqali kiradi. Bu yerda faqat ro‘yxat.</p>
-                </div>
-                <div className="table-responsive">
-                    <table className="table table-hover">
-                        <thead><tr><th>F.I.Sh.</th><th>Telefon</th><th>ID</th><th>Guruh</th><th>Holat</th></tr></thead>
-                        <tbody>
-                            {students.length === 0 ? (
-                                <tr><td colSpan={5} className="text-center text-body-secondary py-5">Hali talaba yo‘q. Taklif havolasi keyingi bosqichda ochiladi.</td></tr>
-                            ) : students.map((student) => (
-                                <tr key={student.id}>
-                                    <td className="fw-medium">{student.name}</td>
-                                    <td>{student.phone}</td>
-                                    <td>{student.student_code ?? '—'}</td>
-                                    <td>{student.group ?? '—'}</td>
-                                    <td>{labels[student.status] ?? student.status}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <Card>
+                <CardHeader
+                    title="Talabalar"
+                    description="Talaba tizimga Telegram taklif havolasi orqali o‘zi qo‘shiladi. Ma’lumotni tuzatish va holatni o‘zgartirish audit jurnaliga yoziladi; talaba o‘chirilmaydi."
+                />
+                <StudentList
+                    url="/academic/students"
+                    detailUrl={(id) => `/academic/students/${id}`}
+                    students={students}
+                    filters={filters}
+                    groups={groups}
+                    internships={internships}
+                    emptyText="Hali talaba yo‘q. Amaliyot guruhi sahifasida taklif havolasini yarating va talabalarga yuboring."
+                />
+                <div className="h-2" />
+            </Card>
         </AppLayout>
     );
 }

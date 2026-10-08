@@ -65,7 +65,8 @@ return [
     |
     */
 
-    'timezone' => 'Asia/Tashkent',
+    // Stored instants are UTC. Business days and display use universities.timezone (ASSUMPTIONS A51).
+    'timezone' => 'UTC',
 
     /*
     |--------------------------------------------------------------------------
@@ -78,9 +79,9 @@ return [
     |
     */
 
-    'locale' => env('APP_LOCALE', 'en'),
+    'locale' => env('APP_LOCALE', 'uz'),
 
-    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'en'),
+    'fallback_locale' => env('APP_FALLBACK_LOCALE', 'uz'),
 
     'faker_locale' => env('APP_FAKER_LOCALE', 'en_US'),
 
@@ -122,5 +123,24 @@ return [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
+
+    /*
+    | First administrator, created or updated by `php artisan admin:ensure` and by the seeder.
+    | Values come only from the environment; nothing here is a default credential.
+    */
+    'bootstrap_admin' => [
+        'login' => env('ADMIN_LOGIN'),
+        'password' => env('ADMIN_PASSWORD'),
+        'name' => env('ADMIN_NAME', 'Administrator'),
+        'email' => env('ADMIN_EMAIL'),
+        'university_name' => env('UNIVERSITY_NAME', 'Universitet'),
+        'university_timezone' => env('UNIVERSITY_TIMEZONE', 'Asia/Tashkent'),
+    ],
+
+    /*
+    | Proxies in front of nginx that terminate TLS: "*" or a comma-separated list of IPs/CIDRs.
+    | Empty trusts none, so X-Forwarded-* headers from clients are ignored.
+    */
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
 
 ];

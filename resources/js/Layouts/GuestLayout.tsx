@@ -1,15 +1,12 @@
-import { ReactNode, useEffect } from 'react';
+import { Head } from '@inertiajs/react';
+import { ReactNode } from 'react';
 
-export default function GuestLayout({ children }: { children: ReactNode }) {
-    useEffect(() => {
-        document.documentElement.className = 'layout-wide customizer-hide';
-    }, []);
-
+export default function GuestLayout({ title, children }: { title: string; children: ReactNode }) {
     return (
-        <div className="container-xxl">
-            <div className="authentication-wrapper authentication-basic container-p-y">
-                <div className="authentication-inner">{children}</div>
-            </div>
+        <div className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-10">
+            <Head title={title} />
+            <div className="pointer-events-none absolute top-1/2 left-1/2 -z-0 hidden size-[30rem] -translate-x-[60%] -translate-y-[55%] rounded-full bg-primary-500/10 blur-3xl sm:block" aria-hidden="true" />
+            <div className="relative w-full max-w-md">{children}</div>
         </div>
     );
 }

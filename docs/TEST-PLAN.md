@@ -2,7 +2,24 @@
 
 A feature is not done because a page renders. The tests below are the acceptance list from the spec and the contract. Geography, exclusion constraints, and webhook tests run against PostgreSQL with PostGIS. SQLite is not a substitute for those tests.
 
-PHPUnit 12, or Pest if the Laravel 13 starter kit already installs it. Either way the cases below exist.
+PHPUnit 12. Two configurations run the same suite:
+
+- `php artisan test` uses `phpunit.xml`: sqlite `:memory:`, array cache. Fast. PostgreSQL-only tests skip themselves.
+- `composer test:pgsql` uses `phpunit.pgsql.xml`: PostGIS database `internship_test` on port 5434 and Redis DB 2/3 on port 16379. Needs `docker compose up -d postgres redis`. This run is the gate.
+
+Phase 1 foundation tests: `AuthenticationTest`, `RoleAuthorizationTest`, `UniversityScopeTest`, `SupervisorScopeTest`, `MigrationIntegrityTest`, `InfrastructureTest`, `AcademicStructureTest`.
+
+Phase 2 tests: `Phase2AuthorizationTest` (role matrix, university 404, supervisor scope 404, no coordinates on supervisor pages), `AssignmentTest` (D2, D5, bulk mixed results, inactive organization, transitions, scheduler activation, bounded queries), `InviteOnboardingTest` (hash only, closed/expired refusal, duplicate Telegram id, closing keeps students), `ChangeRequestTest` (one pending, no coordinates, atomic approve, forced-failure rollback, admin-only new organization), `OrganizationTest` (audit split, validation, geography type, GiST, `ST_DWithin` 99/100/101), `InternshipManagementTest` (supervisors, replacement history and access, exclusion constraint), `AuditLogTest` (append-only trigger, university scope, UTC instants), `ConcurrencyTest` (two PostgreSQL sessions: open-assignment race, student row lock, trigger after a concurrent deactivation). Shared fixtures live in `tests/Concerns/BuildsInternships.php`.
+
+Phase 3–7 tests:
+
+- `TelegramBotTest` (27): webhook secret 404/403, `update_id` replay, group chats and edited messages ignored, onboarding with `JOIN_CONFIRM`, student-code clash, invalid/closed/expired invites, invite closed mid-dialog, unknown and blocked users, menus, per-user and join and attendance rate limits, check-in/out through the bot, forwarded location and venue, text while a location is expected, change requests with stale list buttons, a failing send does not stop processing. Shared helpers: `tests/Concerns/TalksToBot.php` with `FakeTelegramClient`.
+- `AttendanceServiceTest` (21): evidence snapshots, server time over device time, outside radius, low and missing accuracy, invalid coordinates, no assignment, outside the period, inactive organization, blocked student, D3 duplicate, failed check-out keeps the session OPEN, check-out/check-in disabled, location override audited, stale-session closing, event immutability, one open session, multiple sessions refused, group policy replaces the university policy.
+- `AttendancePostgisTest` (PostgreSQL only): `ST_DWithin` at 99 m, 99.9999 m and 101 m with points projected by `ST_Project`; two concurrent check-ins produce one session (lock timeout `55P03`, unique `23505`); immutability trigger.
+- `AttendanceWebTest` (14): the D4 formula on seven scenario students, totals, minimum off and group policy, 62-day cap, admin list and filters, evidence page, supervisor scope 404 and admin-only 403, corrections and close-session with audit and untouched originals, report and scoped CSV with formula-injection guard and owner-only download, export rate limit 429, dashboard tiles.
+- `NotificationsAndOpsTest` (10): assignment notification once after commit, none after rollback, change-request decision notification, blocked students skipped, failures recorded, `/health`, forwarded HTTPS trusted only from `TRUSTED_PROXIES`, `admin:ensure`, `telegram:webhook` HTTPS and secret checks, schedule list.
+
+Latest run: `composer test:pgsql` 285 tests, 1957 assertions, OK. `php artisan test` 267 passed, 18 skipped (PostgreSQL-only), 1886 assertions; the same with `--parallel`. The 1,000-student measurement is recorded in `FINAL-ACCEPTANCE-MATRIX.md` §9.
 
 ## 1. Unit
 
@@ -57,6 +74,16 @@ Boundary tests must build real geography points and call PostGIS, not a PHP have
 | Supervisor A opens B’s student | 404 and no student fields in the body |
 | Student scope | no route returns another student’s attendance |
 | Inactive supervisor | cannot log in and is absent from the invite picker |
+| Admin student directory | search (name, phone, code), group, internship, placement, status filters; detail with academic path, internship, supervisor, assignments (`StudentManagementTest`) |
+| Student identity correction / status | audited `student.update` / `student.status_change`; Telegram id unchanged; duplicate code refused; reason required; assignment untouched |
+| Supervisor `/my-students` | only open-period participants; filters cannot widen; replaced supervisor sees nothing |
+| University settings, course/group edit | audited `university.update`; foreign rows 404; parents fixed (`AdminCompletionTest`) |
+| Supervisor create/update/status, detail | `supervisor.create/update/status_change`; periods, open students, history |
+| Organization detail and status | `organization.status_change`; existing assignments kept; foreign 404 |
+| Internship dates, assignment dates | `internship.update`, `assignment.update`; PENDING start+end, ACTIVE end only, history frozen |
+| Dashboards | admin counts own university only; supervisor counts scoped students only |
+| Student read contract | `StudentContextServiceTest`: denial for unknown/INACTIVE/BLOCKED, PENDING is not active, §64 message, no coordinates |
+| Change request rate limit | 11th request in a minute is 429 |
 
 ## 3. Telegram integration
 
@@ -75,6 +102,8 @@ Boundary tests must build real geography points and call PostGIS, not a PHP have
 Two check-in transactions for one student at the same time: exactly one OPEN session. The test should use overlapping transactions or a lock, not two sequential calls.
 
 Two assignment activations for one student: one ACTIVE.
+
+Implemented on PostgreSQL with two sessions (`ConcurrencyTest`): simultaneous open assignments, student row lock, organization closed mid-flight, duplicate onboarding of one Telegram user, simultaneous approval of one change request, concurrent supervisor replacement (one open period).
 
 ## 5. Security
 

@@ -2,6 +2,8 @@
 
 Web and Telegram call the same services. Phone time is never the attendance time. The product records that a verified event happened at a server time. It does not claim the student stayed on site between those events.
 
+D3 and D4 are final. A disallowed second session that day is rejected. Minimum duration OFF plus one completed session is PRESENT. `AttendanceEvent` is the immutable fact, `AttendanceSession` is the pair, and the day status is computed. Those three are not one table.
+
 ## 1. Check-in order
 
 The order is fixed:

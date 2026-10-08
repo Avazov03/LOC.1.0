@@ -6,7 +6,6 @@ use App\Enums\AcademicYearStatus;
 use App\Enums\ActiveStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Academic\AcademicRequest;
-use App\Models\StudentProfile;
 use App\Services\Academic\AcademicStructureService;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
@@ -175,6 +174,22 @@ class AcademicController extends Controller
         return back()->with('success', 'Kurs qo‘shildi.');
     }
 
+    public function updateStudyYear(AcademicRequest $request, int $studyYear): RedirectResponse
+    {
+        $this->authorize('academic.manage');
+        $this->academic->updateStudyYear($request->user(), $studyYear, $request->integer('course_number'), $request->string('name')->toString());
+
+        return back()->with('success', 'Kurs yangilandi.');
+    }
+
+    public function updateGroup(AcademicRequest $request, int $group): RedirectResponse
+    {
+        $this->authorize('academic.manage');
+        $this->academic->updateGroup($request->user(), $group, $request->string('name')->toString(), $request->string('code')->toString());
+
+        return back()->with('success', 'Guruh yangilandi.');
+    }
+
     public function groups(): Response
     {
         $this->authorize('academic.manage');
@@ -207,29 +222,5 @@ class AcademicController extends Controller
         );
 
         return back()->with('success', 'Guruh qo‘shildi.');
-    }
-
-    public function students(): Response
-    {
-        $this->authorize('academic.manage');
-        $universityId = request()->user()->university_id;
-
-        $students = StudentProfile::query()
-            ->where('university_id', $universityId)
-            ->with('currentGroup')
-            ->orderBy('last_name')
-            ->get()
-            ->map(fn (StudentProfile $student) => [
-                'id' => $student->id,
-                'name' => $student->fullName(),
-                'phone' => $student->phone,
-                'student_code' => $student->student_code,
-                'group' => $student->currentGroup?->name,
-                'status' => $student->status->value,
-            ]);
-
-        return Inertia::render('Academic/Students', [
-            'students' => $students,
-        ]);
     }
 }

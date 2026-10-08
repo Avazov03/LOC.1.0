@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Production-like run: PostgreSQL + PostGIS (internship_test) and Redis.
+    Needs `docker compose up -d postgres redis`. Run with `composer test:pgsql`.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Unit">
+            <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Feature">
+            <directory>tests/Feature</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file" force="true"/>
+        <env name="BCRYPT_ROUNDS" value="4" force="true"/>
+        <env name="BROADCAST_CONNECTION" value="null" force="true"/>
+        <env name="CACHE_STORE" value="redis" force="true"/>
+        <env name="CACHE_PREFIX" value="amaliyot-test" force="true"/>
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="5434" force="true"/>
+        <env name="DB_DATABASE" value="internship_test" force="true"/>
+        <env name="DB_USERNAME" value="internship" force="true"/>
+        <env name="DB_PASSWORD" value="internship" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="REDIS_CLIENT" value="predis" force="true"/>
+        <env name="REDIS_HOST" value="127.0.0.1" force="true"/>
+        <env name="REDIS_PORT" value="16379" force="true"/>
+        <env name="REDIS_DB" value="2" force="true"/>
+        <env name="REDIS_CACHE_DB" value="3" force="true"/>
+        <env name="MAIL_MAILER" value="array" force="true"/>
+        <env name="QUEUE_CONNECTION" value="sync" force="true"/>
+        <env name="SESSION_DRIVER" value="array" force="true"/>
+        <env name="PULSE_ENABLED" value="false" force="true"/>
+        <env name="TELESCOPE_ENABLED" value="false" force="true"/>
+        <env name="NIGHTWATCH_ENABLED" value="false" force="true"/>
+        <env name="TELEGRAM_BOT_USERNAME" value="" force="true"/>
+        <env name="TELEGRAM_BOT_TOKEN" value="" force="true"/>
+        <env name="TELEGRAM_WEBHOOK_SECRET" value="" force="true"/>
+        <env name="ADMIN_LOGIN" value="" force="true"/>
+        <env name="ADMIN_PASSWORD" value="" force="true"/>
+    </php>
+</phpunit>

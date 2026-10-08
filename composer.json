@@ -7,11 +7,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
-        "inertiajs/inertia-laravel": "3.0",
+        "inertiajs/inertia-laravel": "^3.0",
         "laravel/framework": "^13.0",
-        "laravel/tinker": "^3.0"
+        "laravel/tinker": "^3.0",
+        "predis/predis": "^3.3"
     },
     "require-dev": {
+        "brianium/paratest": "^7.20",
         "fakerphp/faker": "^1.23",
         "laravel/pail": "^1.2.5",
         "laravel/pint": "^1.27",
@@ -47,6 +49,10 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@php artisan test"
+        ],
+        "test:pgsql": [
+            "@php artisan config:clear --ansi",
+            "@php vendor/bin/phpunit --configuration=phpunit.pgsql.xml"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

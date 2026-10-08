@@ -14,22 +14,39 @@ class Navigation
         if ($user->isAdmin()) {
             return [
                 ['header' => 'Asosiy'],
-                ['label' => 'Boshqaruv', 'href' => '/dashboard', 'icon' => 'bx-home-smile'],
+                ['label' => 'Boshqaruv', 'href' => '/dashboard', 'icon' => 'home'],
+                ['header' => 'Amaliyot'],
+                ['label' => 'Amaliyot guruhlari', 'href' => '/internships', 'icon' => 'briefcase'],
+                ['label' => 'Tashkilotlar', 'href' => '/organizations', 'icon' => 'mapPin'],
+                ['label' => 'Biriktirishlar', 'href' => '/assignments', 'icon' => 'link'],
+                ['label' => 'O‘zgartirish so‘rovlari', 'href' => '/change-requests', 'icon' => 'swap'],
+                ['label' => 'Rahbarlar', 'href' => '/supervisors', 'icon' => 'userCheck'],
+                ['header' => 'Davomat'],
+                ['label' => 'Davomat', 'href' => '/attendance', 'icon' => 'clock'],
+                ['label' => 'Hisobotlar', 'href' => '/reports', 'icon' => 'chart'],
+                ['label' => 'Davomat siyosati', 'href' => '/attendance/policies', 'icon' => 'sliders'],
                 ['header' => 'Akademik tuzilma'],
-                ['label' => 'Fakultetlar', 'href' => '/academic/faculties', 'icon' => 'bx-building'],
-                ['label' => 'Yo‘nalishlar', 'href' => '/academic/programs', 'icon' => 'bx-book-open'],
-                ['label' => 'O‘quv yillari', 'href' => '/academic/years', 'icon' => 'bx-calendar'],
-                ['label' => 'Kurslar', 'href' => '/academic/study-years', 'icon' => 'bx-layer'],
-                ['label' => 'Guruhlar', 'href' => '/academic/groups', 'icon' => 'bx-group'],
-                ['label' => 'Talabalar', 'href' => '/academic/students', 'icon' => 'bx-user'],
+                ['label' => 'Fakultetlar', 'href' => '/academic/faculties', 'icon' => 'building'],
+                ['label' => 'Yo‘nalishlar', 'href' => '/academic/programs', 'icon' => 'book'],
+                ['label' => 'O‘quv yillari', 'href' => '/academic/years', 'icon' => 'calendar'],
+                ['label' => 'Kurslar', 'href' => '/academic/study-years', 'icon' => 'layers'],
+                ['label' => 'Guruhlar', 'href' => '/academic/groups', 'icon' => 'users'],
+                ['label' => 'Talabalar', 'href' => '/academic/students', 'icon' => 'user'],
+                ['header' => 'Nazorat'],
+                ['label' => 'Audit jurnali', 'href' => '/audit-logs', 'icon' => 'shield'],
+                ['label' => 'Sozlamalar', 'href' => '/settings', 'icon' => 'settings'],
             ];
         }
 
         if ($user->isSupervisor()) {
             return [
                 ['header' => 'Asosiy'],
-                ['label' => 'Boshqaruv', 'href' => '/dashboard', 'icon' => 'bx-home-smile'],
-                ['label' => 'Mening guruhlarim', 'href' => '/my-groups', 'icon' => 'bx-group'],
+                ['label' => 'Boshqaruv', 'href' => '/dashboard', 'icon' => 'home'],
+                ['label' => 'Mening guruhlarim', 'href' => '/my-groups', 'icon' => 'users'],
+                ['label' => 'Talabalar', 'href' => '/my-students', 'icon' => 'user'],
+                ['label' => 'Davomat', 'href' => '/attendance', 'icon' => 'clock'],
+                ['label' => 'Hisobotlar', 'href' => '/reports', 'icon' => 'chart'],
+                ['label' => 'O‘zgartirish so‘rovlari', 'href' => '/change-requests', 'icon' => 'swap'],
             ];
         }
 

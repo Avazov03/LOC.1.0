@@ -35,4 +35,18 @@ return [
         ],
     ],
 
+    'telegram' => [
+        // Public bot username, only used to build t.me invite links. Not a secret.
+        'bot_username' => env('TELEGRAM_BOT_USERNAME'),
+        // Secrets: environment only, never in source, docs or Git.
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'api_base' => env('TELEGRAM_API_BASE', 'https://api.telegram.org'),
+        'timeout' => (int) env('TELEGRAM_HTTP_TIMEOUT', 10),
+        // Minutes an unfinished dialog (join, check-in, change request) is kept.
+        'conversation_ttl' => (int) env('TELEGRAM_CONVERSATION_TTL', 30),
+        // true: record outgoing messages instead of calling the Bot API (local demos without a token).
+        'fake' => (bool) env('TELEGRAM_FAKE', false),
+    ],
+
 ];

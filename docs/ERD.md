@@ -1,6 +1,8 @@
 # ERD
 
-Phase 0 schema. No migrations have been created. Names below are the ones implementation must use so the same rule is not modeled twice.
+Phase 0 schema, locked 8 October 2026. Names below are the ones implementation must use so the same rule is not modeled twice.
+
+Academic tables through `student_group_memberships` already have a migration. Later tables in this file are still planned. Where the migration disagrees with this file, this file wins and a follow-up migration closes the gap. The `users.university_id` gap was closed in Phase 1 (`2026_10_08_110000_require_user_university_and_index_scope`).
 
 Conventions:
 
@@ -51,7 +53,7 @@ TelegramConversation
 | Column | Notes |
 | --- | --- |
 | id | PK |
-| university_id | FK, required |
+| university_id | FK, not null, restrict on delete |
 | name | Display name for staff. Students mirror profile name |
 | email | Nullable, unique when not null |
 | login | Nullable, unique when not null. Required for admin and supervisor |
@@ -72,7 +74,7 @@ TelegramConversation
 | student_code | Nullable. Unique `(university_id, student_code)` where not null |
 | first_name, last_name | Required |
 | phone | Required, indexed, not unique |
-| telegram_user_id | `bigint` unique, not null |
+| telegram_user_id | `bigint`, unique, nullable until the bot account is linked. Check-in refuses a null. Username is never stored as the key |
 | status | `ACTIVE`, `INACTIVE`, `BLOCKED` |
 | timestamps | |
 
@@ -169,7 +171,7 @@ No separate internship status (A5). The period is the gate.
 | created_by | FK users |
 | timestamps | |
 
-Exclusion constraint: ranges for the same `internship_id` must not overlap. Null `ends_on` is treated as unbounded. Partial unique index: one open period per internship.
+Exclusion constraint: ranges for the same `internship_id` must not overlap. Ranges are half-open `[starts_on, ends_on)` (A50). Null `ends_on` is treated as unbounded. Partial unique index: one open period per internship.
 
 ### internship_invites
 
@@ -240,12 +242,12 @@ Location edits update this column and write `audit_logs`. They do not update pas
 
 Indexes:
 
-- partial unique `(student_profile_id) WHERE status = 'ACTIVE'`
-- `(student_profile_id, start_at, end_at)`
-- `(status)`
-- `(organization_id)`, `(supervisor_profile_id)`, `(internship_id)`
+- partial unique `(student_profile_id) WHERE status IN ('PENDING', 'ACTIVE')` — D2, including a future row that does not overlap
+- `(student_profile_id, start_at)` — one student’s history
+- `(internship_id, status)` — a cohort’s current placements. This replaces a low-selectivity index on `status` alone
+- `(organization_id)`, `(supervisor_profile_id)`
 
-**D2.** Exclusion constraint on `tstzrange(start_at, end_at)` for rows in `PENDING` or `ACTIVE`, per student, using `btree_gist`.
+**D2.** The partial unique index is the constraint. A `btree_gist` range exclusion is not added, because two open rows cannot exist to overlap.
 
 Inactive organization cannot be referenced by a new `ACTIVE` or `PENDING` row. Enforced in the service and with a deferred trigger or an application check plus a test. A plain FK cannot express “organization must be active”.
 
@@ -257,7 +259,7 @@ Inactive organization cannot be referenced by a new `ACTIVE` or `PENDING` row. E
 | student_profile_id | FK |
 | current_assignment_id | FK nullable |
 | request_type | `EXISTING_ORGANIZATION`, `NEW_ORGANIZATION` |
-| requested_organization_id | FK nullable. Required for existing type |
+| requested_organization_id | FK nullable. Required for existing type. Set to the created organization when a new-type request is approved (A56) |
 | requested_organization_data | jsonb nullable. Required for new type. No coordinates (A23) |
 | reason | text |
 | status | `PENDING`, `APPROVED`, `REJECTED`, `CANCELLED` |
@@ -281,14 +283,14 @@ Check constraint ties type to which payload is present. Partial unique: one `PEN
 | check_in_enabled | bool |
 | check_out_enabled | bool |
 | minimum_duration_minutes | int nullable. Null means OFF |
-| multiple_sessions_allowed | bool |
+| multiple_sessions_allowed | bool, default false. Locked off: `CHECK attendance_policies_single_session (multiple_sessions_allowed = false)` (A69) |
 | location_required | bool |
 | accuracy_threshold_meters | int nullable. Null means off (A29) |
 | manual_correction_allowed | bool |
 | status | `ACTIVE`, `INACTIVE` |
 | timestamps | |
 
-Partial unique: one `ACTIVE` policy per `(scope_type, scope_id)`. No late-threshold column (A32).
+Partial unique: one `ACTIVE` policy per `(scope_type, scope_id)`. No late-threshold column (A32). Checks on PostgreSQL: minimum and accuracy are null or positive.
 
 ### attendance_sessions
 
@@ -306,7 +308,7 @@ Partial unique: one `ACTIVE` policy per `(scope_type, scope_id)`. No late-thresh
 | closed_at | Nullable. Set only from a verified check-out event |
 | timestamps | |
 
-Partial unique: one `OPEN` session per `student_profile_id`. Index `(student_profile_id, local_date)`.
+Partial unique: one `OPEN` session per `student_profile_id`. Index `(student_profile_id, local_date)`. Checks: `duration_seconds >= 0`; a `COMPLETED` session has `closed_at` and `duration_seconds`.
 
 There is no `attendance_days` table. Day status is computed (`ATTENDANCE-RULES.md`).
 
@@ -342,7 +344,7 @@ Trigger: reject `UPDATE` and `DELETE`.
 
 ### audit_logs
 
-`actor_user_id` nullable, `action`, `entity_type`, `entity_id`, `before` jsonb, `after` jsonb, `reason`, `ip` inet nullable, `metadata` jsonb, `created_at`.
+`university_id` FK (A55), `actor_user_id` nullable, `action`, `entity_type`, `entity_id`, `before` jsonb, `after` jsonb, `reason`, `ip` inet nullable, `metadata` jsonb, `created_at`. Indexes: `(entity_type, entity_id)`, `(actor_user_id)`, `(university_id, created_at)`.
 
 Indexes: `(entity_type, entity_id)`, `(actor_user_id)`, `(created_at)`. Trigger rejects update and delete. Do not copy location trails into `before`/`after` when the entity change is not itself a location change.
 
@@ -354,23 +356,42 @@ Indexes: `(entity_type, entity_id)`, `(actor_user_id)`, `(created_at)`. Trigger 
 
 One row per `telegram_user_id` (unique): `state`, `context` jsonb, `expires_at`, timestamps. This is dialog state, not attendance state. Context must not be treated as a verified location or as an organization point.
 
-## 9. Index list required by §82
+### telegram_notifications
 
-| Need | Where |
+Outbound student notices (A79): `key` unique (idempotency), `student_profile_id` FK, `text`, `status` (`PENDING`, `SENT`, `FAILED`, `SKIPPED`), `attempts`, `error`, `sent_at`, timestamps; index `(student_profile_id, created_at)`. Written after commit and sent by the queue. `telegram:prune` removes old processed updates and expired conversations.
+
+### report_exports
+
+Queued CSV exports (A78): `university_id` FK, `user_id` FK (only that user may download), `filters` jsonb including `type` (`summary`, `daily`), `status` (`PENDING`, `RUNNING`, `DONE`, `FAILED`), `path` on the local disk, `rows`, `error`, `finished_at`, timestamps.
+
+## 9. Indexes and the query each one serves
+
+An index is listed only when a real read uses that leading column. Low-cardinality flags alone are not indexed.
+
+| Query | Index |
 | --- | --- |
-| Telegram user id | unique `student_profiles.telegram_user_id` |
-| Student code | unique partial on `student_code` |
-| Phone | index `student_profiles.phone` |
-| Group | `student_group_memberships.student_group_id`, `internships.student_group_id` |
-| Supervisor | supervisor period, assignment, invite |
-| Organization | `internship_assignments.organization_id` |
-| Assignment status | `internship_assignments.status` |
-| Assignment student/date | `(student_profile_id, start_at, end_at)` |
-| Event student/date | `(student_profile_id, occurred_at)` |
-| Session date | `(student_profile_id, local_date)` |
-| Invite token hash | unique `token_hash` |
-| Audit entity | `(entity_type, entity_id)` |
-| Spatial | GiST on `organizations.location` |
+| Bot identity | unique `student_profiles.telegram_user_id` |
+| Student number inside one university | unique `(university_id, student_code)`. PostgreSQL allows many nulls |
+| Phone search | `student_profiles.phone`. Not unique |
+| Student directory, page by name | `(university_id, last_name, first_name)` |
+| Students in one group | `student_profiles.current_group_id` and `student_group_memberships.student_group_id` |
+| Staff list | `(users.university_id, role, status)` |
+| Active organizations for a picker | `(organizations.university_id, status)` |
+| Cohorts in a year | `(internships.university_id, academic_year_id)` |
+| Who supervises this cohort now | partial unique one open `internship_supervisor_periods` row per internship, plus `(supervisor_profile_id)` where `ends_on` is null |
+| Invite lookup | unique `token_hash` |
+| One open placement | partial unique assignment `(student_profile_id)` where status is `PENDING` or `ACTIVE` |
+| Student assignment history | `(internship_assignments.student_profile_id, start_at)` |
+| Placements at one organization | `internship_assignments.organization_id` |
+| One pending change request | partial unique change request per student where `PENDING` |
+| One student’s attendance | `(attendance_events.student_profile_id, occurred_at)` |
+| One student’s day | `(attendance_sessions.student_profile_id, local_date)` |
+| Admin count of sessions on a date | `(attendance_sessions.local_date)`. Supervisor “today” stays on the student-leading index because the scope is a small id list |
+| Webhook replay | primary key `telegram_processed_updates.update_id` |
+| Audit screen for one row | `(audit_logs.entity_type, entity_id)` |
+| Geofence | GiST on `organizations.location` `geography(Point, 4326)`. `ST_DWithin` uses it. `ST_Distance` is the stored meter value, not the pass/fail |
+
+`ST_DWithin` is inclusive. For a 100 m radius, 99 m passes, 100 m passes, 101 m fails. Those three cases are automated tests on PostGIS, not on sqlite.
 
 ## 10. Delete and rollback
 

@@ -68,7 +68,8 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Above GenerateAttendanceReport::$timeout (600 s) so a long export is never handed to a second worker.
+            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 660),
             'block_for' => null,
             'after_commit' => false,
         ],

@@ -56,7 +56,8 @@ JOIN_NAME        → first name
 JOIN_SURNAME     → last name
 JOIN_PHONE       → phone. Store the number. It is not the identity key.
 JOIN_STUDENT_CODE → optional. Student may skip.
-    → StudentOnboardingService in one transaction:
+JOIN_CONFIRM     → summary with confirm / cancel buttons (A76)
+    → on confirm, StudentOnboardingService in one transaction:
          user + student profile + group membership + internship participant
     → show the main menu
 ```
@@ -156,7 +157,8 @@ Amaliyot joyini o‘zgartirish
     → state CHANGE_REASON
     → state CHANGE_KIND: existing organization or new organization
 EXISTING:
-    → bot lists ACTIVE organization names
+    → bot lists ACTIVE organization names; each button carries the list index, not the database id (A76)
+    → a stale or out-of-range index answers "list changed" and writes nothing
     → service creates PENDING EXISTING_ORGANIZATION
 NEW:
     → ask name, address text, contact name, contact phone
@@ -177,6 +179,7 @@ JOIN_NAME
 JOIN_SURNAME
 JOIN_PHONE
 JOIN_STUDENT_CODE
+JOIN_CONFIRM
 AWAIT_CHECKIN_LOCATION
 AWAIT_CHECKOUT_LOCATION
 CHANGE_REASON
@@ -187,7 +190,9 @@ CHANGE_NEW_ADDRESS
 CHANGE_NEW_CONTACT
 ```
 
-A menu command from a non-idle state cancels the pending dialog and does not write attendance. A location that arrives with no waiting state is logged and ignored.
+A menu command from a non-idle state cancels the pending dialog and does not write attendance. A location that arrives with no waiting state is logged and ignored. A forwarded location or a venue is stored as a failed `INVALID_LOCATION` attempt (A74). Group chats and edited messages are ignored. Conversation state is a `telegram_conversations` row that expires after `TELEGRAM_CONVERSATION_TTL` minutes (default 30); IDLE has no row.
+
+Rate limits (A73): 20 actions per minute per Telegram user, 6 attendance actions per minute, 5 invite joins per minute. A send failure is logged and never undoes the business write.
 
 ## 10. Idempotency
 
