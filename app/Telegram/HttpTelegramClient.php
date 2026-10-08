@@ -31,20 +31,21 @@ class HttpTelegramClient implements TelegramClient
         $this->call('answerCallbackQuery', array_filter(['callback_query_id' => $callbackQueryId, 'text' => $text], fn ($value) => $value !== null));
     }
 
+    // setWebhook and deleteWebhook answer `"result": true`, not an object.
     public function setWebhook(string $url, string $secret, array $allowedUpdates): array
     {
-        return $this->call('setWebhook', [
+        return ['ok' => $this->call('setWebhook', [
             'url' => $url,
             'secret_token' => $secret,
             'allowed_updates' => $allowedUpdates,
             'drop_pending_updates' => false,
             'max_connections' => 40,
-        ]);
+        ]) === true];
     }
 
     public function deleteWebhook(): array
     {
-        return $this->call('deleteWebhook', ['drop_pending_updates' => false]);
+        return ['ok' => $this->call('deleteWebhook', ['drop_pending_updates' => false]) === true];
     }
 
     public function getWebhookInfo(): array

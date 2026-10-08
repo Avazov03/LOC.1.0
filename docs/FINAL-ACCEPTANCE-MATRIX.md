@@ -121,9 +121,10 @@ The first measurement found the 30-day report too slow. Two fixes, both covered 
 | --- | --- |
 | `php artisan migrate:fresh --seed` | OK; demo: 68 events, 31 sessions; staff `admin`, `rahbar`, `rahbar2`, `Avazov` |
 | Rollback all, migrate, rollback, migrate, seed | OK |
-| `composer test:pgsql` | OK, 285 tests, 1957 assertions (three consecutive runs) |
-| `php artisan test` | 267 passed, 18 skipped (PostgreSQL-only), 1886 assertions |
-| `php artisan test --parallel` | OK, 285 tests, 18 skipped |
+| `composer test:pgsql` | OK, 287 tests, 1966 assertions |
+| `php artisan test` | 269 passed, 18 skipped (PostgreSQL-only), 1895 assertions |
+| `php artisan test --parallel` | OK |
+| Live Bot API | `telegram:webhook --info` and `telegram:poll` connect to `@LOCInternshipBot`; `HttpTelegramClientTest` pins the real result shapes (`setWebhook`/`deleteWebhook` return `true`) |
 | `npm run typecheck`, `npm run build` | OK |
 | `vendor/bin/pint --test` | Passed |
 | Gap scan (TODO, FIXME, `console.log`, `dd(`, `dump(`) | No findings in `app`, `resources/js`, `routes`, `config`, `database` |
