@@ -1,0 +1,35 @@
+---
+description: LOC.1.0 server, GitHub and change-to-deploy workflow
+alwaysApply: true
+---
+
+# LOC.1.0 infrastructure and deploy workflow
+
+The user writes in Uzbek; answer in Uzbek, decisively (give one clear recommendation, not menus).
+
+## Where things live
+- GitHub: https://github.com/Avazov03/LOC.1.0, branch `main`.
+- Production server "ProServer" (AWS Lightsail, Frankfurt, 4 GB / 2 vCPU / 80 GB, Ubuntu 24.04):
+  static IP `63.189.22.217`, private `172.26.9.144`, domain `loc.zonic.fit` (DNS at Spaceship).
+- SSH: `ssh proserver` (alias in `~/.ssh/config`, key `~/.ssh/loc_proserver`, user `ubuntu`).
+  The old Lightsail default Frankfurt key is compromised and removed from ProServer. Never use or ask for it.
+- App directory on the server: `/opt/loc` (Docker Compose stack, secrets only in `/opt/loc/.env`).
+- Do NOT touch the other servers (Zonic-Backend 18.197.174.196, my-server 3.65.92.39): they run zonic.uz, Lexify, tdyu, nexlab, yurist-ai.
+
+## After any change to project files
+When a prompt changes code/config in this repo, finish the change, run the relevant checks
+(`php artisan test`, `npm run build`, lint), then ASK once:
+"O‘zgarishlarni commit qilib GitHub'ga push qilaymi va serverga deploy qilaymi?"
+- Only on "ha"/yes: commit with a clear message, `git push origin main`, then deploy.
+- Never commit, push or deploy without that yes. Pure questions/inspection need no prompt.
+
+## Deploy (after yes)
+```bash
+ssh proserver 'cd /opt/loc && git pull --ff-only && ./deploy.sh'
+```
+If `deploy.sh` is missing, do the steps in `docs/DEPLOYMENT.md` section 8 (composer install --no-dev,
+npm build, migrate --force, cache config/routes/views, restart app queue scheduler), then check
+`https://loc.zonic.fit/health` and report the result.
+
+## Secrets
+Never commit, print or put in docs: `.env` values, bot token, webhook secret, DB/admin passwords, private keys.
