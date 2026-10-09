@@ -13,5 +13,7 @@ COPY docker/php/www.conf /usr/local/etc/php-fpm.d/zz-app.conf
 
 # Set to 0 in production images where the code does not change at runtime.
 ENV PHP_OPCACHE_VALIDATE_TIMESTAMPS=1
+# Each FPM worker can use up to memory_limit (256M); size this to the container's memory.
+ENV PHP_FPM_MAX_CHILDREN=20
 
 WORKDIR /var/www/html

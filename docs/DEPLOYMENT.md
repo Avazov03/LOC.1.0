@@ -6,12 +6,20 @@ One Laravel monolith in Docker: `app` (PHP-FPM 8.4), `nginx`, `postgres` (PostGI
 
 1. Copy `.env.example` to `.env` on the server. `.env` is gitignored and is the only place secrets live.
 2. Set `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://<your domain>`, then `php artisan key:generate`.
-3. Change the database password. `docker-compose.yml` uses `internship/internship` for local development; in production set `POSTGRES_PASSWORD` and `DB_PASSWORD` to the same strong value, through an override file or environment, not in Git.
-4. Remove the host port mappings for `postgres` (5434) and `redis` (16379) in production, or bind them to `127.0.0.1`. Only nginx should face the network.
+3. Change the database password. `docker-compose.yml` uses `internship/internship` for local development. In production put a strong `DB_PASSWORD` in `.env`; `docker-compose.prod.yml` passes it to Postgres and the PHP containers.
+4. `docker-compose.prod.yml` removes the host ports of `postgres` and `redis`, publishes nginx only on `127.0.0.1:8080`, turns off OPcache timestamp checks, caps FPM at 8 workers and sets memory limits per container.
 5. Telegram: create the bot with BotFather and put its token in `TELEGRAM_BOT_TOKEN`. Set `TELEGRAM_BOT_USERNAME` (public, used in invite links) and a random `TELEGRAM_WEBHOOK_SECRET` of at least 16 characters, for example `openssl rand -hex 32`. Never commit these values or paste them into documents or chats. If a token was ever shared, rotate it in BotFather (`/revoke`) and update `.env`.
 6. First admin: set `ADMIN_LOGIN`, `ADMIN_PASSWORD` (and optionally `ADMIN_NAME`, `ADMIN_EMAIL`, `UNIVERSITY_NAME`, `UNIVERSITY_TIMEZONE`). Remove `ADMIN_PASSWORD` from `.env` after the first run if you prefer.
 
 ## 2. Start
+
+In production run `./deploy.sh`. It builds the images and the frontend (in a `node:22-alpine` container), installs Composer dependencies without dev packages, migrates, caches config/routes/views, restarts the app, queue and scheduler, and checks `/health`. It is also the update command: `git pull --ff-only && ./deploy.sh`. Run `php artisan admin:ensure` and `php artisan telegram:webhook` once after the first deploy:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm -u www-data app php artisan admin:ensure
+```
+
+The manual steps, for development or a different setup:
 
 ```bash
 docker compose build
@@ -37,6 +45,8 @@ Telegram only delivers webhooks to HTTPS. The nginx container listens on port 80
 
 - a reverse proxy or load balancer with a certificate (Caddy, Traefik, a cloud load balancer, or a host nginx with Let's Encrypt), forwarding to `nginx:80`; or
 - add a `listen 443 ssl` server to `docker/nginx/default.conf` with mounted certificates and redirect port 80 to 443.
+
+The production server uses a host nginx with a Let's Encrypt certificate (certbot) that proxies to `127.0.0.1:8080` and sends `X-Forwarded-For` and `X-Forwarded-Proto`. Set `TRUSTED_PROXIES=172.16.0.0/12` (the Docker bridge networks) and `SESSION_SECURE_COOKIE=true`.
 
 Set `APP_URL` to the HTTPS address. Behind a proxy, configure trusted proxies so Laravel sees the HTTPS scheme and the client IP (the webhook and login rate limits key on the IP).
 
@@ -79,4 +89,4 @@ Keep at least daily dumps off the server, plus `storage/app` if you need finishe
 
 ## 8. Logs and updates
 
-Application logs go to `storage/logs` (set `LOG_CHANNEL=daily` or `stderr` for container logging). Logs never contain the bot token. To update: pull, `composer install --no-dev`, `npm run build`, `php artisan migrate --force`, re-cache config/routes/views, restart `app`, `queue`, `scheduler`.
+Application logs go to `storage/logs` (set `LOG_CHANNEL=daily` or `stderr` for container logging). Logs never contain the bot token. To update: `git pull --ff-only && ./deploy.sh`.

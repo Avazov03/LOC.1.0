@@ -1,0 +1,42 @@
+# Production overrides, used by deploy.sh:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml ...
+# DB_PASSWORD is interpolated from the server's .env. It is applied to Postgres only when the
+# volume is first created; changing it later requires ALTER USER inside Postgres.
+# Only nginx is published, on 127.0.0.1:8080; the host nginx terminates TLS in front of it.
+x-prod-env: &prod-env
+  DB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+  PHP_OPCACHE_VALIDATE_TIMESTAMPS: "0"
+  PHP_FPM_MAX_CHILDREN: "8"
+
+services:
+  postgres:
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    ports: !reset []
+    mem_limit: 768m
+
+  redis:
+    # noeviction: queued jobs and rate-limit counters must never be dropped silently.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "192mb", "--maxmemory-policy", "noeviction"]
+    ports: !reset []
+    mem_limit: 256m
+
+  app:
+    environment: *prod-env
+    mem_limit: 1g
+
+  # Workers write logs and exports; running them as www-data keeps those files writable by FPM.
+  queue:
+    user: www-data
+    environment: *prod-env
+    mem_limit: 512m
+
+  scheduler:
+    user: www-data
+    environment: *prod-env
+    mem_limit: 256m
+
+  nginx:
+    ports: !override
+      - "127.0.0.1:8080:80"
+    mem_limit: 128m
