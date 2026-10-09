@@ -73,7 +73,7 @@ export default function SupervisorShow({ supervisor, periods, history }: { super
                                         variant="tonal"
                                         icon="user"
                                         onClick={() =>
-                                            window.confirm('Rahbar panelini u ko‘rgandek ochasiz (faqat ko‘rish). Kirish audit jurnaliga yoziladi. Davom etasizmi?') &&
+                                            window.confirm('Rahbar kabinetiga kirasiz va uning barcha funksiyalaridan foydalana olasiz. Har bir amal audit jurnalida sizning nomingiz bilan belgilanadi. Davom etasizmi?') &&
                                             router.post(`/supervisors/${supervisor.id}/impersonate`)
                                         }
                                     >

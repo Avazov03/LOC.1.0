@@ -77,7 +77,8 @@ class Present
             'action' => $log->action,
             'entity_type' => $log->entity_type,
             'entity_id' => $log->entity_id,
-            'actor' => $log->actor?->name ?? 'Tizim',
+            'actor' => ($log->actor?->name ?? 'Tizim')
+                .(isset($log->metadata['impersonator_name']) ? ' (admin '.$log->metadata['impersonator_name'].' orqali)' : ''),
             'before' => $log->before,
             'after' => $log->after,
             'reason' => $log->reason,

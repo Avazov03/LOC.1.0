@@ -6,6 +6,8 @@ use App\Enums\ActiveStatus;
 use App\Models\AuditLog;
 use App\Models\University;
 use App\Models\User;
+use App\Support\Present;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Concerns\BuildsInternships;
@@ -16,11 +18,14 @@ class ImpersonationTest extends TestCase
     use BuildsInternships;
     use RefreshDatabase;
 
-    public function test_admin_views_as_supervisor_read_only_and_returns(): void
+    public function test_admin_works_as_supervisor_with_audit_and_returns(): void
     {
-        $university = University::factory()->create();
-        $admin = User::factory()->create(['university_id' => $university->id, 'password' => 'admin-pass-123']);
-        $profile = $this->supervisorProfile($university, 'Karimov Aziz');
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 16:00', 'Asia/Tashkent')->utc());
+        $world = $this->world();
+        $admin = $world['admin'];
+        $profile = $world['profile'];
+        $student = $world['students'][0];
+        $this->placement($world['internship'], $student, $world['org'])->update(['start_at' => now()->subDays(5)]);
         $supervisorPassword = $profile->user->password;
 
         $this->actingAs($admin)->post("/supervisors/{$profile->id}/impersonate")->assertRedirect('/dashboard');
@@ -28,15 +33,23 @@ class ImpersonationTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['actor_user_id' => $admin->id, 'action' => 'auth.impersonate', 'entity_id' => $profile->user_id]);
 
         $this->get('/dashboard')->assertInertia(fn (Assert $page) => $page
-            ->where('auth.user.name', 'Karimov Aziz')
+            ->where('auth.user.name', $profile->user->name)
             ->where('auth.impersonating', true));
         $this->get('/my-groups')->assertOk();
         $this->get('/settings')->assertForbidden();
+
+        $this->post("/attendance/students/{$student->id}/marks", ['date' => '2026-10-12', 'kind' => 'PRESENT'])->assertSessionHas('success');
+        $mark = AuditLog::query()->where('action', 'attendance.mark')->sole();
+        $this->assertSame($profile->user_id, $mark->actor_user_id);
+        $this->assertSame($admin->id, $mark->metadata['impersonator_user_id']);
+        $this->assertStringContainsString("(admin {$admin->name} orqali)", Present::auditLog($mark, 'Asia/Tashkent')['actor']);
 
         $this->from('/profile')->put('/profile/password', [
             'current_password' => 'x', 'password' => 'new-pass-123', 'password_confirmation' => 'new-pass-123',
         ])->assertRedirect('/profile')->assertSessionHas('error');
         $this->post('/profile/telegram')->assertSessionHas('error');
+        $this->put('/profile/notifications', ['notify_check_events' => false])->assertSessionHas('error');
+        $this->assertTrue($profile->fresh()->notify_check_events);
         $this->assertSame($supervisorPassword, $profile->user->fresh()->password);
         $this->assertNull($profile->fresh()->telegram_link_hash);
 
@@ -45,6 +58,9 @@ class ImpersonationTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['actor_user_id' => $admin->id, 'action' => 'auth.impersonate_end']);
         $this->get('/dashboard')->assertInertia(fn (Assert $page) => $page->where('auth.impersonating', false));
         $this->get('/settings')->assertOk();
+
+        $this->post("/attendance/marks/{$mark->entity_id}/revoke", ['reason' => 'Tekshiruv']);
+        $this->assertArrayNotHasKey('impersonator_user_id', AuditLog::query()->where('action', 'attendance.mark_revoke')->sole()->metadata ?? []);
     }
 
     public function test_impersonation_does_not_count_as_supervisor_login(): void

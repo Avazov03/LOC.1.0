@@ -38,7 +38,7 @@ Not allowed:
 
 Every item in §70 writes `audit_logs`: admin login, organization create/update, location update, radius update, invite create/close, assignment create/update/cancel, supervisor assignment, manual correction, policy update, change-request decision.
 
-**View as supervisor ("Rahbar sifatida kirish").** An admin may open the panel as an ACTIVE supervisor of the same university, from the supervisor page. The session keeps the admin id; every non-GET request except "Admin hisobiga qaytish" and logout is refused (`BlockImpersonatedWrites`), so no mark, password, Telegram link or export is ever recorded as the supervisor's own action. Start and end are audited as `auth.impersonate` / `auth.impersonate_end` with the admin as actor; it does not count as the supervisor's login. A banner is shown the whole time.
+**Work as supervisor ("Rahbar sifatida kirish").** An admin may open the panel as an ACTIVE supervisor of the same university, from the supervisor page, and use every supervisor function with the supervisor's scope. The session keeps the admin id, and every audit row written meanwhile carries `impersonator_user_id` / `impersonator_name` in metadata; history shows "{supervisor} (admin {name} orqali)". The supervisor's own account stays off limits: password change, Telegram link/unlink and notification settings are refused (`ProtectImpersonatedAccount`). Start and end are audited as `auth.impersonate` / `auth.impersonate_end` with the admin as actor; it does not count as the supervisor's login. A sticky banner with "Admin hisobiga qaytish" is shown the whole time.
 
 ## 3. Supervisor
 

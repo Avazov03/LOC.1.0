@@ -13,8 +13,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Admin opens the web panel as a supervisor of the same university, read-only (see BlockImpersonatedWrites).
- * The admin's id stays in the session so the panel can return to the admin account; both steps are audited.
+ * Admin works in the web panel as a supervisor of the same university. The admin's id stays in the session so the
+ * panel can return to the admin account and every audit row written meanwhile names the admin (AuditLogger).
+ * The supervisor's password and Telegram settings stay off limits (ProtectImpersonatedAccount).
  */
 class ImpersonationController extends Controller
 {
@@ -36,7 +37,7 @@ class ImpersonationController extends Controller
         $request->session()->put(self::SESSION_KEY, $admin->id);
         $request->session()->put('impersonated_profile_id', $supervisor);
 
-        return redirect()->route('dashboard')->with('success', "Siz {$target->name} sifatida ko‘ryapsiz. Bu rejimda hech narsa o‘zgartirilmaydi.");
+        return redirect()->route('dashboard')->with('success', "Siz {$target->name} sifatida ishlayapsiz. Har bir amal audit jurnalida sizning nomingiz bilan belgilanadi.");
     }
 
     public function leave(Request $request, AuditLogger $audit): RedirectResponse

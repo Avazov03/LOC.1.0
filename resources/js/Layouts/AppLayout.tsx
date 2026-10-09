@@ -119,24 +119,29 @@ export default function AppLayout({ title, children }: { title: string; children
                             </button>
                         </div>
                     </div>
-                </header>
-
-                <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6">
                     {auth.impersonating ? (
-                        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/50 bg-warning/15 px-4 py-3 text-sm text-heading" role="status">
+                        <div
+                            className="mx-auto mt-2 flex max-w-[1440px] flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/50 bg-[#fff6e0] px-4 py-2.5 text-sm text-heading shadow-panel dark:bg-[#4a3b1a]"
+                            role="status"
+                        >
                             <span className="flex items-center gap-2">
-                                <Icon name="alert" className="size-4 text-[#e09600] dark:text-warning" />
-                                Siz <b>{auth.user?.name}</b> sifatida ko‘ryapsiz (faqat ko‘rish rejimi, hech narsa o‘zgartirilmaydi).
+                                <Icon name="alert" className="size-4 shrink-0 text-[#e09600] dark:text-warning" />
+                                <span>
+                                    Siz <b>{auth.user?.name}</b> sifatida ishlayapsiz. Har bir amal audit jurnalida sizning nomingiz bilan belgilanadi.
+                                </span>
                             </span>
                             <button
                                 type="button"
                                 onClick={() => router.post('/impersonate/leave')}
-                                className="rounded-md bg-primary-500 px-3 py-1.5 text-[0.8125rem] font-medium text-white hover:bg-primary-600"
+                                className="rounded-md bg-primary-500 px-3 py-1.5 text-[0.8125rem] font-medium whitespace-nowrap text-white hover:bg-primary-600"
                             >
                                 Admin hisobiga qaytish
                             </button>
                         </div>
                     ) : null}
+                </header>
+
+                <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6">
                     {flash.success ? (
                         <div className="mb-6 flex items-center gap-2 rounded-md bg-success/15 px-4 py-3 text-sm text-[#56ca00] dark:text-success" role="status">
                             <Icon name="check" className="size-4" />

@@ -2,6 +2,7 @@
 
 namespace App\Services\Audit;
 
+use App\Http\Controllers\ImpersonationController;
 use App\Models\AuditLog;
 use App\Models\User;
 use Carbon\CarbonInterface;
@@ -30,6 +31,11 @@ class AuditLogger
         array $metadata = [],
         ?int $universityId = null,
     ): AuditLog {
+        $impersonator = $this->impersonator();
+        if ($impersonator !== null) {
+            $metadata += ['impersonator_user_id' => $impersonator->id, 'impersonator_name' => $impersonator->name];
+        }
+
         return AuditLog::query()->create([
             'university_id' => $universityId ?? $entity->getAttribute('university_id') ?? $actor?->university_id,
             'actor_user_id' => $actor?->id,
@@ -42,6 +48,19 @@ class AuditLogger
             'ip' => app()->bound('request') ? request()->ip() : null,
             'metadata' => $metadata === [] ? null : $metadata,
         ]);
+    }
+
+    /**
+     * The admin behind "Rahbar sifatida kirish", so an action taken in the supervisor's panel names who really did it.
+     */
+    private function impersonator(): ?User
+    {
+        if (! app()->bound('request') || ! request()->hasSession()) {
+            return null;
+        }
+        $id = request()->session()->get(ImpersonationController::SESSION_KEY);
+
+        return $id === null ? null : User::query()->find($id);
     }
 
     public function lastLogin(User $user): ?CarbonInterface
