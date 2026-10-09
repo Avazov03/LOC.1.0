@@ -5,7 +5,8 @@ alwaysApply: true
 
 # LOC.1.0 infrastructure and deploy workflow
 
-The user writes in Uzbek; answer in Uzbek, decisively (give one clear recommendation, not menus).
+ALWAYS reply to the user in Uzbek (Latin script), even when the prompt is written in another language.
+Be decisive: give one clear recommendation, not menus.
 
 ## Where things live
 - GitHub: https://github.com/Avazov03/LOC.1.0, branch `main`.
