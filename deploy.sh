@@ -28,6 +28,8 @@ artisan optimize
 echo "==> Restarting services"
 dc up -d --remove-orphans
 dc restart app queue scheduler
+# nginx resolves the app container's address only at startup.
+dc restart nginx
 
 echo "==> Health check"
 for i in $(seq 1 20); do
