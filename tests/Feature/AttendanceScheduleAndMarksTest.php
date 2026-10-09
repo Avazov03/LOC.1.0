@@ -51,7 +51,7 @@ class AttendanceScheduleAndMarksTest extends TestCase
 
     private function inside(): LocationInput
     {
-        return new LocationInput(41.3112, 69.2797, 10.0);
+        return new LocationInput($this->freshLatitude(41.3112), 69.2797, 10.0);
     }
 
     /**

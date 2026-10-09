@@ -54,7 +54,10 @@ Every action except `/start` with an invite token:
          → "Siz {course} {group} amaliyotiga qo‘shilmoqdasiz."
 JOIN_NAME        → first name
 JOIN_SURNAME     → last name
-JOIN_PHONE       → phone. Store the number. It is not the identity key.
+JOIN_PHONE       → phone, only from the "📱 Raqamni yuborish" button with contact.user_id = sender (A83).
+                   Typed numbers and other people's contacts are refused.
+                   Same phone already registered in this university → PHONE_REGISTERED, dialog closed,
+                   "ask your supervisor for a Telegram rebind link".
 JOIN_STUDENT_CODE → optional. Student may skip.
 JOIN_CONFIRM     → summary with confirm / cancel buttons (A76)
     → on confirm, StudentOnboardingService in one transaction:
@@ -64,7 +67,16 @@ JOIN_CONFIRM     → summary with confirm / cancel buttons (A76)
 
 The invite supplies group, academic year, internship, and the supervisor snapshot. It does not prove civil identity and does not create an organization assignment.
 
-Duplicate start for the same person does not create a second student.
+Duplicate start for the same person does not create a second student. A new Telegram account of the same person is refused by phone; the student is moved instead:
+
+```text
+/start r_<token>   (created on the student page by an admin or the current supervisor, 24 h, one use)
+    → token hash matches, not expired, student ACTIVE
+    → this Telegram id belongs to another student → refuse
+    → else student.telegram_user_id = sender; old and new conversations cleared
+    → new account: "✅ Telegram hisobingiz talaba profilingizga ulandi"
+    → old account: notice that the profile moved and it can no longer record attendance
+```
 
 Conversation context expires. An abandoned join does not leave a partial student. The profile is written only on the final confirm.
 
@@ -112,6 +124,9 @@ Other failures:
 | --- | --- |
 | No location attached | Location yuborish kerak. |
 | LOW_ACCURACY | Location is too imprecise. Ask them to send it again. |
+| MAP_LOCATION | A point picked on the map is not accepted; turn GPS on and press «📍 Joylashuvni yuborish». |
+| STALE_LOCATION | The location arrived late; press the button again. |
+| REUSED_LOCATION | This exact point was sent before (saved or someone else's); send the current location on site. |
 | OUTSIDE_INTERNSHIP_PERIOD | Attendance is not accepted outside the internship period. |
 | Duplicate open session | Sizda allaqachon faol attendance mavjud. |
 | Policy check-in disabled | This action is not available. |

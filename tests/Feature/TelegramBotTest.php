@@ -165,7 +165,7 @@ class TelegramBotTest extends TestCase
         $this->say($userId, '/start '.$token);
         $this->say($userId, 'Ali');
         $this->say($userId, 'Valiyev');
-        $this->say($userId, '+998901234500');
+        $this->sendContact($userId, '+998901234500', $userId);
         $this->say($userId, 'TAKEN-1');
         $this->assertStringContainsString('allaqachon band', $this->say($userId, Keyboard::CONFIRM));
         $this->assertNull(StudentProfile::query()->where('telegram_user_id', $userId)->first());
@@ -202,7 +202,7 @@ class TelegramBotTest extends TestCase
         $this->say($userId, '/start '.$token);
         $this->say($userId, 'Ali');
         $this->say($userId, 'Valiyev');
-        $this->say($userId, '+998901234501');
+        $this->sendContact($userId, '+998901234501', $userId);
         $this->say($userId, Keyboard::SKIP);
 
         InternshipInvite::query()->update(['status' => 'CLOSED', 'closed_at' => now()]);

@@ -3,6 +3,7 @@ import { FormEvent, useState } from 'react';
 import ChangeRequestTable from '@/Components/ChangeRequestTable';
 import Icon from '@/Components/Icon';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
+import { StudentTelegramLink, StudentTelegramStatus } from '@/Components/StudentTelegramRebind';
 import { Button, Card, CardHeader, Dl, EmptyRow, Field, Input, Select, StatusBadge, Table, Td, Textarea } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
 import type { Assignment, ChangeRequest, OrganizationOption, StudentDetail } from '@/types';
@@ -95,8 +96,10 @@ export default function StudentShow({
                             ['Biriktirish muddati', current ? `${current.start_at} — ${current.end_at}` : '—'],
                             ['Fakultet', student.faculty],
                             ['O‘quv yili', student.academic_year],
+                            ['Telegram', <StudentTelegramStatus key="tg" studentId={student.id} linked={student.telegram_linked} active={student.status === 'ACTIVE'} />],
                         ]}
                     />
+                    <StudentTelegramLink />
                 </Card>
 
                 <Card>

@@ -44,6 +44,7 @@ class SupervisorNotifier
             '🕘 '.$data['time'].' · '.$data['organization'],
             ! $in ? '⏱ '.BotText::duration((int) $data['duration_seconds']) : null,
             $data['distance'] !== null ? '📏 '.$data['distance'].' m' : null,
+            ! empty($data['repeated_coordinates']) ? '⚠️ Joylashuv bugungi avvalgi nuqta bilan aynan bir xil — nusxa bo‘lishi mumkin, tekshiring.' : null,
         ]);
 
         $this->queue("event:{$outcome->event->id}", $supervisor->id, $text);

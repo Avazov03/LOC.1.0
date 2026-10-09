@@ -18,11 +18,13 @@ use App\Services\Reports\AttendanceReportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\Concerns\BuildsInternships;
+use Tests\Concerns\FreshCoordinates;
 use Tests\TestCase;
 
 class AttendanceWebTest extends TestCase
 {
     use BuildsInternships;
+    use FreshCoordinates;
     use RefreshDatabase;
 
     private function at(int $hour, int $minute = 0): void
@@ -32,7 +34,7 @@ class AttendanceWebTest extends TestCase
 
     private function inside(): LocationInput
     {
-        return new LocationInput(41.3112, 69.2797, 10.0);
+        return new LocationInput($this->freshLatitude(41.3112), 69.2797, 10.0);
     }
 
     /**

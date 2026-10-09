@@ -20,11 +20,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Tests\Concerns\BuildsInternships;
+use Tests\Concerns\FreshCoordinates;
 use Tests\TestCase;
 
 class AttendanceServiceTest extends TestCase
 {
     use BuildsInternships;
+    use FreshCoordinates;
     use RefreshDatabase;
 
     private function service(): AttendanceService
@@ -32,9 +34,9 @@ class AttendanceServiceTest extends TestCase
         return app(AttendanceService::class);
     }
 
-    private function inside(?float $accuracy = 10.0): LocationInput
+    private function inside(?float $accuracy = 10.0, bool $live = false): LocationInput
     {
-        return new LocationInput(41.3112, 69.2797, $accuracy);
+        return new LocationInput($this->freshLatitude(41.3112), 69.2797, $accuracy, false, $live);
     }
 
     private function outside(): LocationInput
@@ -96,7 +98,7 @@ class AttendanceServiceTest extends TestCase
     public function test_server_time_is_used_and_device_time_is_evidence_only(): void
     {
         $world = $this->placed();
-        $deviceTime = now()->subDays(3)->getTimestamp();
+        $deviceTime = now()->subSeconds(90)->getTimestamp();
 
         $this->service()->checkIn($world['student'], new LocationInput(41.3112, 69.2797, 5.0, false, false, $deviceTime));
 
@@ -121,7 +123,7 @@ class AttendanceServiceTest extends TestCase
         $this->assertSame(0, AttendanceSession::query()->count());
     }
 
-    public function test_low_accuracy_is_refused_and_missing_accuracy_passes(): void
+    public function test_low_accuracy_is_refused_and_live_location_without_accuracy_passes(): void
     {
         $world = $this->placed();
         $this->policy($world, ['accuracy_threshold_meters' => 50]);
@@ -129,7 +131,95 @@ class AttendanceServiceTest extends TestCase
         $this->assertSame(AttendanceOutcome::LOW_ACCURACY, $this->service()->checkIn($world['student'], $this->inside(80.0))->code);
         $this->assertSame(VerificationStatus::LowAccuracy, AttendanceEvent::query()->sole()->verification_status);
 
-        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], $this->inside(null))->code);
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], $this->inside(null, live: true))->code);
+    }
+
+    public function test_policy_cannot_loosen_accuracy_beyond_the_hard_cap(): void
+    {
+        $world = $this->placed();
+        $this->policy($world, ['accuracy_threshold_meters' => 2000]);
+
+        $outcome = $this->service()->checkIn($world['student'], $this->inside(AttendanceService::MAX_ACCURACY_METERS + 1.0));
+
+        $this->assertSame(AttendanceOutcome::LOW_ACCURACY, $outcome->code);
+        $this->assertSame(AttendanceService::MAX_ACCURACY_METERS, $outcome->data['threshold']);
+    }
+
+    public function test_point_picked_on_the_map_is_refused(): void
+    {
+        $world = $this->placed();
+
+        $outcome = $this->service()->checkIn($world['student'], $this->inside(null));
+
+        $this->assertSame(AttendanceOutcome::MAP_LOCATION, $outcome->code);
+        $this->assertTrue($outcome->retryable());
+        $event = AttendanceEvent::query()->sole();
+        $this->assertSame(AttendanceEventType::FailedCheckIn, $event->event_type);
+        $this->assertSame(AttendanceOutcome::MAP_LOCATION, $event->metadata['reason']);
+        $this->assertSame(0, AttendanceSession::query()->count());
+    }
+
+    public function test_late_message_is_refused(): void
+    {
+        $world = $this->placed();
+        $sent = now()->subSeconds(AttendanceService::MAX_MESSAGE_AGE_SECONDS + 1)->getTimestamp();
+
+        $outcome = $this->service()->checkIn($world['student'], new LocationInput(41.3112, 69.2797, 5.0, false, false, $sent));
+
+        $this->assertSame(AttendanceOutcome::STALE_LOCATION, $outcome->code);
+        $this->assertSame(0, AttendanceSession::query()->count());
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], new LocationInput(41.3112, 69.2797, 5.0, false, false, now()->getTimestamp()))->code);
+    }
+
+    public function test_point_sent_by_another_student_is_refused(): void
+    {
+        $world = $this->world();
+        $first = $world['students'][0];
+        $second = $world['students'][1];
+        $this->placement($world['internship'], $first, $world['org']);
+        $this->placement($world['internship'], $second, $world['org']);
+        $point = new LocationInput(41.3112345, 69.2797, 8.0);
+
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($first, $point)->code);
+        $outcome = $this->service()->checkIn($second, $point);
+
+        $this->assertSame(AttendanceOutcome::REUSED_LOCATION, $outcome->code);
+        $failed = AttendanceEvent::query()->where('student_profile_id', $second->id)->sole();
+        $this->assertSame(AttendanceEventType::FailedCheckIn, $failed->event_type);
+        $this->assertSame(AttendanceEvent::query()->where('student_profile_id', $first->id)->value('id'), $failed->metadata['reused_event_id']);
+        $this->assertSame(0, AttendanceSession::query()->where('student_profile_id', $second->id)->count());
+    }
+
+    public function test_own_point_from_another_day_is_refused(): void
+    {
+        $world = $this->placed();
+        $point = new LocationInput(41.3112345, 69.2797, 8.0);
+
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], $point)->code);
+        $this->travel(2)->hours();
+        $this->assertSame(AttendanceOutcome::CHECKED_OUT, $this->service()->checkOut($world['student'], $this->inside())->code);
+
+        $this->travel(1)->days();
+        $this->assertSame(AttendanceOutcome::REUSED_LOCATION, $this->service()->checkIn($world['student'], $point)->code);
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], $this->inside())->code);
+    }
+
+    public function test_same_point_again_today_is_accepted_and_flagged(): void
+    {
+        $world = $this->placed();
+        $point = new LocationInput(41.3112345, 69.2797, 8.0);
+
+        $in = $this->service()->checkIn($world['student'], $point);
+        $this->assertFalse($in->data['repeated_coordinates']);
+        $this->travel(2)->hours();
+        $out = $this->service()->checkOut($world['student'], $point);
+
+        $this->assertSame(AttendanceOutcome::CHECKED_OUT, $out->code);
+        $this->assertTrue($out->data['repeated_coordinates']);
+        $checkIn = AttendanceEvent::query()->where('event_type', 'CHECK_IN')->sole();
+        $checkOut = AttendanceEvent::query()->where('event_type', 'CHECK_OUT')->sole();
+        $this->assertSame(VerificationStatus::Verified, $checkOut->verification_status);
+        $this->assertSame($checkIn->id, $checkOut->metadata['repeated_coordinates_event_id']);
     }
 
     public function test_invalid_coordinates_are_stored_without_coordinates(): void

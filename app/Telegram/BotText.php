@@ -75,6 +75,15 @@ final class BotText
             AttendanceOutcome::LOW_ACCURACY => '❌ Joylashuv aniqligi past'.($data['accuracy'] !== null ? ' ('.$data['accuracy'].' m)' : '').'. Telefoningizda GPS’ni yoqing va joylashuvni qayta yuboring.',
             AttendanceOutcome::INVALID_LOCATION => '❌ Joylashuv noto‘g‘ri. Joylashuvni qayta yuboring.',
             AttendanceOutcome::FORWARDED_LOCATION => '❌ Uzatilgan yoki xaritadan tanlangan joylashuv qabul qilinmaydi. Hozirgi joylashuvingizni «📍 Joylashuvni yuborish» tugmasi orqali yuboring.',
+            AttendanceOutcome::MAP_LOCATION => self::lines([
+                '❌ Xaritadan tanlangan nuqta qabul qilinmaydi.',
+                'Telefoningizda GPS (joylashuv) yoqilganiga ishonch hosil qiling va pastdagi «📍 Joylashuvni yuborish» tugmasini bosing.',
+            ]),
+            AttendanceOutcome::STALE_LOCATION => '❌ Bu joylashuv kechikib yetib keldi. «📍 Joylashuvni yuborish» tugmasini qayta bosing.',
+            AttendanceOutcome::REUSED_LOCATION => self::lines([
+                '❌ Bu joylashuv avval yuborilgan nuqta bilan aynan bir xil, shuning uchun qabul qilinmaydi.',
+                'Saqlangan yoki boshqa kishidan olingan joylashuv ishlamaydi. Amaliyot joyida turib «📍 Joylashuvni yuborish» tugmasini bosing.',
+            ]),
             AttendanceOutcome::LOCATION_MISSING => 'Joylashuv yuborish kerak. «📍 Joylashuvni yuborish» tugmasini bosing.',
             AttendanceOutcome::NO_ASSIGNMENT => self::NO_ACTIVE_ASSIGNMENT,
             AttendanceOutcome::OUTSIDE_PERIOD => 'Amaliyot muddatidan tashqarida davomat qabul qilinmaydi.',

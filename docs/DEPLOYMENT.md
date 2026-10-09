@@ -85,7 +85,14 @@ docker compose exec -T postgres createdb -U internship internship_restore
 docker compose exec -T postgres pg_restore -U internship -d internship_restore --no-owner < backup-YYYY-MM-DD.dump
 ```
 
-Keep at least daily dumps off the server, plus `storage/app` if you need finished CSV files. A restore drill was run on 8 October 2026: dump of the demo database, restore into a new database, identical row counts for users, events, sessions, audit rows, organizations and migrations, PostGIS present, both immutability triggers present.
+Automatic daily dump: `scripts/backup.sh` writes `~/loc-backups/loc-YYYYMMDD-HHMMSS.dump` (outside the project directory, mode 600), checks it with `pg_restore --list` and deletes dumps older than 14 days (`BACKUP_DIR`, `BACKUP_KEEP_DAYS` override). Install it once in the deploy user's crontab:
+
+```bash
+chmod +x /opt/loc/scripts/backup.sh && mkdir -p -m 700 ~/loc-backups
+( crontab -l 2>/dev/null | grep -v loc-backup; echo '30 2 * * * /opt/loc/scripts/backup.sh >> $HOME/loc-backups/backup.log 2>&1 # loc-backup' ) | crontab -
+```
+
+These dumps protect against a bad migration or a deleted row, not against losing the server. Also turn on Lightsail automatic snapshots (instance → Snapshots → Automatic snapshots), and keep at least weekly dumps off the server, plus `storage/app` if you need finished CSV files. A restore drill was run on 8 October 2026: dump of the demo database, restore into a new database, identical row counts for users, events, sessions, audit rows, organizations and migrations, PostGIS present, both immutability triggers present.
 
 ## 8. Logs and updates
 

@@ -128,6 +128,7 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile');
     Route::put('/profile/password', [ProfileController::class, 'password'])->middleware('throttle:6,1')->name('profile.password');
+    Route::post('/students/{student}/telegram-rebind', [StudentController::class, 'telegramRebind'])->whereNumber('student')->middleware('throttle:10,1')->name('students.telegram-rebind');
     Route::put('/internships/{internship}/students/{student}/work-days', [InternshipController::class, 'updateStudentWorkDays'])->whereNumber(['internship', 'student'])->name('internships.student-work-days');
 
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');

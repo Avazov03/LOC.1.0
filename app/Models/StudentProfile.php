@@ -23,9 +23,11 @@ class StudentProfile extends Model
         'status',
     ];
 
+    protected $hidden = ['telegram_rebind_hash'];
+
     protected function casts(): array
     {
-        return ['status' => StudentStatus::class];
+        return ['status' => StudentStatus::class, 'telegram_rebind_expires_at' => 'immutable_datetime'];
     }
 
     public function user(): BelongsTo

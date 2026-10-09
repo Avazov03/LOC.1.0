@@ -12,6 +12,7 @@ use App\Services\Assignments\InternshipAssignmentService;
 use App\Services\Audit\AuditLogger;
 use App\Services\ChangeRequests\InternshipChangeRequestService;
 use App\Services\Students\StudentService;
+use App\Services\Students\StudentTelegramRebindService;
 use App\Support\Present;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -100,6 +101,14 @@ class StudentController extends Controller
         $this->students->setStatus($request->user(), $student, StudentStatus::from($data['status']), $data['reason']);
 
         return back()->with('success', 'Talaba holati o‘zgartirildi.');
+    }
+
+    public function telegramRebind(Request $request, int $student, StudentTelegramRebindService $rebind): RedirectResponse
+    {
+        return back()->with([
+            'success' => 'Havolani talabaga yuboring. U yangi Telegram hisobidan havolani ochishi kerak. Havola '.StudentTelegramRebindService::LINK_HOURS.' soat amal qiladi, bir marta ishlaydi va faqat hozir ko‘rsatiladi.',
+            'telegram_link' => $rebind->createLink($request->user(), $student),
+        ]);
     }
 
     /**

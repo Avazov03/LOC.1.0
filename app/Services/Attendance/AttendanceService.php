@@ -26,6 +26,10 @@ use Illuminate\Support\Facades\DB;
  */
 class AttendanceService
 {
+    public const MAX_MESSAGE_AGE_SECONDS = 180;
+
+    public const MAX_ACCURACY_METERS = 300;
+
     public function __construct(
         private readonly AttendancePolicyService $policies,
         private readonly LocationVerifier $verifier,
@@ -97,18 +101,19 @@ class AttendanceService
         }
 
         $measure = null;
+        $evidence = [];
         if ($policy['location_required']) {
             if ($location === null) {
                 return new AttendanceOutcome(AttendanceOutcome::LOCATION_MISSING);
             }
-            [$failure, $measure] = $this->verify($assignment, $location, $policy);
+            [$failure, $measure, $evidence] = $this->verify($student, $assignment, $location, $policy, $now, $localDate);
             if ($failure !== null) {
-                return $this->fail($failure, AttendanceEventType::FailedCheckIn, $student, $assignment, null, $location, $measure, $now, $localDate, $source, $updateId, $policy);
+                return $this->fail($failure, AttendanceEventType::FailedCheckIn, $student, $assignment, null, $location, $measure, $now, $localDate, $source, $updateId, $policy, $evidence);
             }
         }
 
         try {
-            return DB::transaction(function () use ($student, $assignment, $policy, $localDate, $location, $measure, $now, $source, $updateId, $gate) {
+            return DB::transaction(function () use ($student, $assignment, $policy, $localDate, $location, $measure, $evidence, $now, $source, $updateId, $gate) {
                 $locked = StudentProfile::query()->lockForUpdate()->find($student->id);
                 if ($locked === null || $locked->status !== StudentStatus::Active) {
                     return new AttendanceOutcome(AttendanceOutcome::ACCESS_DENIED);
@@ -139,13 +144,14 @@ class AttendanceService
                     'session_id' => $session->id,
                     'event_type' => AttendanceEventType::CheckIn,
                     'verification_status' => VerificationStatus::Verified,
-                ], $location, $measure, $now, $localDate, $source, $updateId, $policy);
+                ], $location, $measure, $now, $localDate, $source, $updateId, $policy, $evidence);
                 $session->forceFill(['check_in_event_id' => $event->id])->save();
 
                 $outcome = new AttendanceOutcome(AttendanceOutcome::CHECKED_IN, [
                     'time' => $now->setTimezone($gate['university']->timezone)->format('H:i'),
                     'organization' => $assignment->organization->name,
                     'distance' => $measure !== null ? (int) round($measure['distance']) : null,
+                    'repeated_coordinates' => isset($evidence['repeated_coordinates_event_id']),
                 ], $event);
                 $this->supervisors->attendance($outcome, $gate['student'], $assignment);
 
@@ -176,19 +182,20 @@ class AttendanceService
         }
 
         $measure = null;
+        $evidence = [];
         if ($policy['location_required']) {
             if ($location === null) {
                 return new AttendanceOutcome(AttendanceOutcome::LOCATION_MISSING);
             }
-            [$failure, $measure] = $this->verify($assignment, $location, $policy);
+            [$failure, $measure, $evidence] = $this->verify($student, $assignment, $location, $policy, $now, $localDate);
             if ($failure !== null) {
                 // The session stays OPEN; no close time is invented (ATTENDANCE-RULES §2.6).
-                return $this->fail($failure, AttendanceEventType::FailedCheckOut, $student, $assignment, $open, $location, $measure, $now, $localDate, $source, $updateId, $policy);
+                return $this->fail($failure, AttendanceEventType::FailedCheckOut, $student, $assignment, $open, $location, $measure, $now, $localDate, $source, $updateId, $policy, $evidence);
             }
         }
 
         try {
-            return DB::transaction(function () use ($student, $assignment, $policy, $localDate, $location, $measure, $now, $source, $updateId, $gate) {
+            return DB::transaction(function () use ($student, $assignment, $policy, $localDate, $location, $measure, $evidence, $now, $source, $updateId, $gate) {
                 StudentProfile::query()->lockForUpdate()->find($student->id);
                 $session = AttendanceSession::query()
                     ->where('student_profile_id', $student->id)
@@ -205,7 +212,7 @@ class AttendanceService
                     'session_id' => $session->id,
                     'event_type' => AttendanceEventType::CheckOut,
                     'verification_status' => VerificationStatus::Verified,
-                ], $location, $measure, $now, $localDate, $source, $updateId, $policy);
+                ], $location, $measure, $now, $localDate, $source, $updateId, $policy, $evidence);
 
                 $duration = max(0, $now->getTimestamp() - $session->opened_at->getTimestamp());
                 $session->forceFill([
@@ -220,6 +227,7 @@ class AttendanceService
                     'organization' => $assignment->organization->name,
                     'distance' => $measure !== null ? (int) round($measure['distance']) : null,
                     'duration_seconds' => $duration,
+                    'repeated_coordinates' => isset($evidence['repeated_coordinates_event_id']),
                 ], $event);
                 $this->supervisors->attendance($outcome, $gate['student'], $assignment);
 
@@ -325,40 +333,76 @@ class AttendanceService
     }
 
     /**
+     * Anti-spoofing order: forwarded, coordinates, message age, map-picked point, accuracy, radius, reused point.
+     * The third element is evidence metadata stored on the event that is written next.
+     *
      * @param  array<string, mixed>  $policy
-     * @return array{0: ?string, 1: ?array<string, mixed>}
+     * @return array{0: ?string, 1: ?array<string, mixed>, 2: array<string, mixed>}
      */
-    private function verify(InternshipAssignment $assignment, LocationInput $location, array $policy): array
+    private function verify(StudentProfile $student, InternshipAssignment $assignment, LocationInput $location, array $policy, CarbonImmutable $now, string $localDate): array
     {
         if ($location->forwarded) {
-            return [AttendanceOutcome::FORWARDED_LOCATION, null];
+            return [AttendanceOutcome::FORWARDED_LOCATION, null, []];
         }
         if (! LocationVerifier::validCoordinates($location->latitude, $location->longitude)) {
-            return [AttendanceOutcome::INVALID_LOCATION, null];
+            return [AttendanceOutcome::INVALID_LOCATION, null, []];
+        }
+        // Telegram stamps the message on its own server; a location that reaches us late was not sent "now".
+        if ($location->deviceTimestamp !== null && $now->getTimestamp() - $location->deviceTimestamp > self::MAX_MESSAGE_AGE_SECONDS) {
+            return [AttendanceOutcome::STALE_LOCATION, null, []];
+        }
+        // A point picked on the map carries no GPS accuracy; a device fix or a live location does.
+        if ($location->accuracy === null && ! $location->live) {
+            return [AttendanceOutcome::MAP_LOCATION, null, []];
         }
 
         $measure = $this->verifier->measure($assignment->organization_id, $location->latitude, $location->longitude);
         if ($measure === null) {
-            return [AttendanceOutcome::INVALID_LOCATION, null];
+            return [AttendanceOutcome::INVALID_LOCATION, null, []];
         }
 
-        // A29: a null threshold switches the check off. A missing device accuracy is not treated as poor (A72).
-        $threshold = $policy['accuracy_threshold_meters'];
-        if ($threshold !== null && $location->accuracy !== null && $location->accuracy > $threshold) {
-            return [AttendanceOutcome::LOW_ACCURACY, $measure];
+        // A29: the policy threshold may be stricter; MAX_ACCURACY_METERS always applies.
+        $threshold = min($policy['accuracy_threshold_meters'] ?? self::MAX_ACCURACY_METERS, self::MAX_ACCURACY_METERS);
+        if ($location->accuracy !== null && $location->accuracy > $threshold) {
+            return [AttendanceOutcome::LOW_ACCURACY, $measure, []];
         }
         if (! $measure['within']) {
-            return [AttendanceOutcome::OUTSIDE_RADIUS, $measure];
+            return [AttendanceOutcome::OUTSIDE_RADIUS, $measure, []];
         }
 
-        return [null, $measure];
+        return $this->reusedPoint($student, $location, $localDate, $measure);
+    }
+
+    /**
+     * Two GPS fixes never repeat to 1 cm. The same point from another student, or from this student on another day,
+     * is a saved or shared location and is refused. The same point again today (check-out copied from check-in,
+     * or a retry with the phone's cached fix) is accepted but flagged for the supervisor.
+     *
+     * @param  array<string, mixed>  $measure
+     * @return array{0: ?string, 1: ?array<string, mixed>, 2: array<string, mixed>}
+     */
+    private function reusedPoint(StudentProfile $student, LocationInput $location, string $localDate, array $measure): array
+    {
+        $earlier = AttendanceEvent::query()
+            ->where('latitude', round($location->latitude, 7))
+            ->where('longitude', round($location->longitude, 7))
+            ->orderBy('id')
+            ->get(['id', 'student_profile_id', 'local_date']);
+
+        $foreign = $earlier->first(fn (AttendanceEvent $event) => (int) $event->student_profile_id !== $student->id || (string) $event->local_date !== $localDate);
+        if ($foreign !== null) {
+            return [AttendanceOutcome::REUSED_LOCATION, $measure, ['reused_event_id' => $foreign->id]];
+        }
+
+        return [null, $measure, $earlier->isEmpty() ? [] : ['repeated_coordinates_event_id' => $earlier->first()->id]];
     }
 
     /**
      * @param  array<string, mixed>|null  $measure
      * @param  array<string, mixed>  $policy
+     * @param  array<string, mixed>  $evidence
      */
-    private function fail(string $code, AttendanceEventType $type, StudentProfile $student, ?InternshipAssignment $assignment, ?AttendanceSession $session, ?LocationInput $location, ?array $measure, CarbonImmutable $now, string $localDate, EventSource $source, ?int $updateId, array $policy = []): AttendanceOutcome
+    private function fail(string $code, AttendanceEventType $type, StudentProfile $student, ?InternshipAssignment $assignment, ?AttendanceSession $session, ?LocationInput $location, ?array $measure, CarbonImmutable $now, string $localDate, EventSource $source, ?int $updateId, array $policy = [], array $evidence = []): AttendanceOutcome
     {
         $status = match ($code) {
             AttendanceOutcome::OUTSIDE_RADIUS => VerificationStatus::OutsideRadius,
@@ -375,7 +419,7 @@ class AttendanceService
                 'session_id' => $session?->id,
                 'event_type' => $type,
                 'verification_status' => $status,
-            ], $location, $measure, $now, $localDate, $source, $updateId, $policy, ['reason' => $code]);
+            ], $location, $measure, $now, $localDate, $source, $updateId, $policy, ['reason' => $code, ...$evidence]);
         } catch (UniqueConstraintViolationException) {
             $event = null;
         }
@@ -384,7 +428,7 @@ class AttendanceService
             'distance' => $measure !== null ? (int) round($measure['distance']) : null,
             'radius' => $measure['radius'] ?? null,
             'accuracy' => $location?->accuracy !== null ? (int) round($location->accuracy) : null,
-            'threshold' => $policy['accuracy_threshold_meters'] ?? null,
+            'threshold' => min($policy['accuracy_threshold_meters'] ?? self::MAX_ACCURACY_METERS, self::MAX_ACCURACY_METERS),
         ], $event);
     }
 

@@ -11,6 +11,8 @@ use Illuminate\Testing\TestResponse;
  */
 trait TalksToBot
 {
+    use FreshCoordinates;
+
     protected string $webhookSecret = 'test-webhook-secret-0123456789abcdef';
 
     private int $nextUpdateId = 500000;
@@ -64,9 +66,9 @@ trait TalksToBot
     /**
      * @param  array<string, mixed>  $extra
      */
-    protected function sendLocation(int $userId, float $lat, float $lng, ?float $accuracy = 10.0, array $extra = []): ?string
+    protected function sendLocation(int $userId, float $lat, float $lng, ?float $accuracy = 10.0, array $extra = [], bool $exact = false): ?string
     {
-        $location = ['latitude' => $lat, 'longitude' => $lng];
+        $location = ['latitude' => $exact ? $lat : $this->freshLatitude($lat), 'longitude' => $lng];
         if ($accuracy !== null) {
             $location['horizontal_accuracy'] = $accuracy;
         }

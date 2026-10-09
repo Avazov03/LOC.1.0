@@ -14,6 +14,7 @@ use App\Services\Access\AccessScope;
 use App\Services\Attendance\AttendanceCorrectionService;
 use App\Services\Attendance\AttendanceDayQuery;
 use App\Services\Attendance\AttendanceMarkService;
+use App\Services\Attendance\AttendanceOutcome;
 use App\Services\Attendance\AttendancePolicyService;
 use App\Services\Attendance\WorkScheduleService;
 use App\Support\AttendanceFilters;
@@ -318,6 +319,10 @@ class AttendanceController extends Controller
                 ! empty($metadata['location_override']) ? 'Joylashuv talab qilinmagan (admin)' : null,
                 ! empty($metadata['live_location']) ? 'Jonli joylashuv' : null,
                 ! empty($metadata['forwarded']) ? 'Uzatilgan joylashuv' : null,
+                ($metadata['reason'] ?? null) === AttendanceOutcome::MAP_LOCATION ? 'Xaritadan tanlangan nuqta (GPS aniqligi yo‘q)' : null,
+                ($metadata['reason'] ?? null) === AttendanceOutcome::STALE_LOCATION ? 'Kechikib kelgan xabar' : null,
+                isset($metadata['reused_event_id']) ? 'Avval yuborilgan nuqtaning nusxasi (#'.$metadata['reused_event_id'].')' : null,
+                isset($metadata['repeated_coordinates_event_id']) ? '⚠️ Bugungi avvalgi nuqta bilan aynan bir xil (#'.$metadata['repeated_coordinates_event_id'].')' : null,
             ])),
         ];
     }

@@ -23,6 +23,12 @@ final class AttendanceOutcome
 
     public const LOW_ACCURACY = 'LOW_ACCURACY';
 
+    public const MAP_LOCATION = 'MAP_LOCATION';
+
+    public const STALE_LOCATION = 'STALE_LOCATION';
+
+    public const REUSED_LOCATION = 'REUSED_LOCATION';
+
     public const LOCATION_MISSING = 'LOCATION_MISSING';
 
     public const NO_ASSIGNMENT = 'NO_ASSIGNMENT';
@@ -64,6 +70,9 @@ final class AttendanceOutcome
      */
     public function retryable(): bool
     {
-        return in_array($this->code, [self::OUTSIDE_RADIUS, self::INVALID_LOCATION, self::LOW_ACCURACY, self::FORWARDED_LOCATION, self::LOCATION_MISSING], true);
+        return in_array($this->code, [
+            self::OUTSIDE_RADIUS, self::INVALID_LOCATION, self::LOW_ACCURACY, self::FORWARDED_LOCATION, self::LOCATION_MISSING,
+            self::MAP_LOCATION, self::STALE_LOCATION, self::REUSED_LOCATION,
+        ], true);
     }
 }

@@ -114,6 +114,7 @@ export type StudentDetail = {
     student_code: string | null;
     status: string;
     telegram_user_id: string | null;
+    telegram_linked: boolean;
     registered_at: string | null;
     group: string | null;
     course: string | null;

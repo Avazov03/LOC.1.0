@@ -55,10 +55,12 @@ function RulesFields({ data, setData, errors }: { data: Rules; setData: (key: ke
                         id="accuracy"
                         type="number"
                         min={5}
-                        placeholder="O‘chiq"
+                        max={300}
+                        placeholder="300"
                         value={data.accuracy_threshold_meters ?? ''}
                         onChange={(event) => setData('accuracy_threshold_meters', event.target.value ? Number(event.target.value) : null)}
                     />
+                    <p className="mt-1 text-xs text-muted">Bo‘sh qoldirilsa 300 m. Aniqligi 300 m dan yomon joylashuv har doim rad etiladi.</p>
                 </Field>
             </div>
         </div>
@@ -68,7 +70,7 @@ function RulesFields({ data, setData, errors }: { data: Rules; setData: (key: ke
 function summary(rules: Rules): string {
     return [
         rules.location_required ? 'joylashuv majburiy' : 'joylashuvsiz',
-        rules.accuracy_threshold_meters ? `aniqlik ≤ ${rules.accuracy_threshold_meters} m` : 'aniqlik o‘chiq',
+        rules.accuracy_threshold_meters ? `aniqlik ≤ ${rules.accuracy_threshold_meters} m` : 'aniqlik ≤ 300 m',
         rules.check_in_enabled ? null : 'kelish o‘chiq',
         rules.check_out_enabled ? null : 'ketish o‘chiq',
         rules.manual_correction_allowed ? null : 'tuzatish taqiqlangan',

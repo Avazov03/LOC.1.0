@@ -82,6 +82,9 @@ class StudentOnboardingService
                 }
 
                 $universityId = $invite->internship->university_id;
+                if ($this->phoneRegistered($universityId, $phone)) {
+                    throw new OnboardingException(OnboardingException::PHONE_REGISTERED);
+                }
                 $studentCode = $studentCode !== null && trim($studentCode) !== '' ? trim($studentCode) : null;
                 if ($studentCode !== null && StudentProfile::query()->where('university_id', $universityId)->where('student_code', $studentCode)->exists()) {
                     throw new OnboardingException(OnboardingException::STUDENT_CODE_TAKEN);
@@ -131,6 +134,42 @@ class StudentOnboardingService
 
             throw new OnboardingException($taken ? OnboardingException::ALREADY_REGISTERED : OnboardingException::STUDENT_CODE_TAKEN);
         }
+    }
+
+    /**
+     * Early check at the phone step; joinByHash() repeats it inside the transaction.
+     */
+    public function assertPhoneAvailable(string $tokenHash, string $phone): void
+    {
+        $invite = InternshipInvite::query()->where('token_hash', $tokenHash)->with('internship:id,university_id')->first();
+        $this->assertUsable($invite);
+        if ($this->phoneRegistered($invite->internship->university_id, $phone)) {
+            throw new OnboardingException(OnboardingException::PHONE_REGISTERED);
+        }
+    }
+
+    /**
+     * Phones may have been edited by staff in any format, so they are compared by digits only.
+     */
+    private function phoneRegistered(int $universityId, string $phone): bool
+    {
+        $wanted = self::phoneDigits($phone);
+        if ($wanted === '') {
+            return false;
+        }
+
+        return StudentProfile::query()
+            ->where('university_id', $universityId)
+            ->whereNotNull('phone')
+            ->pluck('phone')
+            ->contains(fn (string $existing) => self::phoneDigits($existing) === $wanted);
+    }
+
+    private static function phoneDigits(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone) ?? '';
+
+        return strlen($digits) === 9 ? '998'.$digits : $digits;
     }
 
     /**

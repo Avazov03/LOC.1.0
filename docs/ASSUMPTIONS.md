@@ -160,7 +160,7 @@ A replayed Telegram `update_id` creates nothing. A new update that is a second c
 The bot requests a single location for the current action. If Telegram delivers a live-location stream, only the point tied to the pending action is used. Later edits are not stored as a trail (§108).
 
 ### A29. Accuracy threshold default is unset
-`accuracy_threshold_meters` null means the check is off. No 50 m default (contract §13). When set, accuracy worse than the threshold rejects the attempt with `LOW_ACCURACY` and the bot asks the student to send location again. The failed attempt is stored (A26).
+`accuracy_threshold_meters` null means only the hard cap applies: accuracy worse than 300 m (`AttendanceService::MAX_ACCURACY_METERS`) is always refused, and a policy value above 300 cannot loosen it. No 50 m default (contract §13). When set, accuracy worse than the threshold rejects the attempt with `LOW_ACCURACY` and the bot asks the student to send location again. The failed attempt is stored (A26).
 
 ### A30. Session versus day status
 Session status is `OPEN`, `COMPLETED`, or `INCOMPLETE`. Day status is computed, not stored, and is not forced into one session row (contract §10).
@@ -332,8 +332,8 @@ A day is expected when an ACTIVE or ENDED assignment covers it and its weekday i
 ### A71. Check-out disabled
 When the resolved policy turns check-out off, a verified check-in creates a COMPLETED session of 0 seconds, and the day is PRESENT.
 
-### A72. Missing device accuracy
-A location without `horizontal_accuracy` passes the accuracy check. The null is stored as evidence (TEST-PLAN §1).
+### A72. Missing device accuracy (revised 2026-10)
+A location sent with the phone's GPS always carries `horizontal_accuracy`; a point picked on the map in Telegram's attachment screen does not. A location without accuracy that is not a live location is refused as `MAP_LOCATION` and stored as a failed event; the bot asks for the "📍 Joylashuvni yuborish" button with GPS on. A live location without accuracy is accepted.
 
 ### A73. Rate limits
 Bot actions 20 per minute per Telegram user; attendance actions 6 per minute per student; invite joins 5 per minute per Telegram user; wrong webhook secret 120 per minute per IP; report exports 5 per minute per user; change requests 10 per minute per user (A61). The limits only stop floods; the database constraints stay the real guards.
@@ -357,4 +357,16 @@ Day reports and exports cover at most 366 days (`AttendanceDayQuery::MAX_RANGE_D
 Student notifications (assignment changes, change-request decisions) are queued after commit and are idempotent by a unique key, so a rolled-back transaction never notifies and a retry never sends twice. Blocked students are skipped; failures are recorded.
 
 ### A80. Operations
-`GET /health` checks the database and the cache and is used by the nginx health check. PostgreSQL JIT is turned off per application connection (`SET jit = off`): measured at 1,000 students it added about 0.5 s of compile time to each report query and saved nothing. Forwarded headers are trusted only from `TRUSTED_PROXIES` (empty trusts none). The redis queue `retry_after` is 660 seconds, above the worker `--timeout=620`. The PostGIS migration's `down()` keeps the extension when other PostGIS extensions depend on it. The 100 m boundary test uses 99.9999 m because projecting a point exactly 100 m away round-trips to a hair above 100 m in floating point; the `ST_DWithin` decision itself is unchanged (ATTENDANCE-RULES §5).
+`GET /health` checks the database and the cache and is used by the nginx health check. PostgreSQL JIT is turned off per application connection (`SET jit = off`): measured at 1,000 students it added about 0.5 s of compile time to each report query and saved nothing. Forwarded headers are trusted only from `TRUSTED_PROXIES` (empty trusts none). The redis queue `retry_after` is 660 seconds, above the worker `--timeout=620`. The PostGIS migration's `down()` keeps the extension when other PostGIS extensions depend on it. The 100 m boundary test uses 99.9999 m because projecting a point exactly 100 m away round-trips to a hair above 100 m in floating point; the `ST_DWithin` decision itself is unchanged (ATTENDANCE-RULES §5). The database is dumped daily by `scripts/backup.sh` with 14-day retention (DEPLOYMENT §7).
+
+### A81. Late location messages
+Telegram stamps each message with its own server time (`date`). A location whose message is more than 180 s older than server "now" (`AttendanceService::MAX_MESSAGE_AGE_SECONDS`) is refused as `STALE_LOCATION`; the student presses the button again. This also covers a location delivered late after an outage.
+
+### A82. Reused coordinates
+Two real GPS fixes practically never match to 7 decimals (about 1 cm). The same point already stored for another student, or for this student on another local date, is a saved or shared location: `REUSED_LOCATION`, failed event with `reused_event_id`. The same point again on the same day for the same student (check-out copied from check-in, a cached fix) is accepted, flagged with `repeated_coordinates_event_id`, shown on the student's attendance page and added as a warning to the supervisor's Telegram notification. This does not stop a student who is physically elsewhere with a GPS spoofing app; that needs live-location checks (deferred).
+
+### A83. Student phone and duplicate accounts
+Onboarding accepts the phone only from Telegram's "share my number" button whose `contact.user_id` equals the sender; a typed number or someone else's contact is refused. If a student of any status with the same phone (compared by digits) already exists in the same university, onboarding is refused (`PHONE_REGISTERED`) at the phone step and again inside the join transaction, and the student is told to ask the supervisor for a Telegram rebind link.
+
+### A84. Student Telegram rebind
+An admin or the student's current supervisor creates a one-time link `/start r_<token>` (24 h, only the SHA-256 hash is stored, shown once). Opening it from a new Telegram account moves the existing profile to that account: history, group, participation and assignment stay; the old account loses access and receives a notice. A Telegram account that already belongs to another student cannot take the link; a non-ACTIVE student cannot get or use one. Audited as `student.telegram_rebind_link` (staff) and `student.telegram_rebind` (old and new ids).

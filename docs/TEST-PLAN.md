@@ -15,6 +15,8 @@ Phase 3–7 tests:
 
 - `TelegramBotTest` (27): webhook secret 404/403, `update_id` replay, group chats and edited messages ignored, onboarding with `JOIN_CONFIRM`, student-code clash, invalid/closed/expired invites, invite closed mid-dialog, unknown and blocked users, menus, per-user and join and attendance rate limits, check-in/out through the bot, forwarded location and venue, text while a location is expected, change requests with stale list buttons, a failing send does not stop processing. Shared helpers: `tests/Concerns/TalksToBot.php` with `FakeTelegramClient`.
 - `AttendanceServiceTest` (21): evidence snapshots, server time over device time, outside radius, low and missing accuracy, invalid coordinates, no assignment, outside the period, inactive organization, blocked student, D3 duplicate, failed check-out keeps the session OPEN, check-out/check-in disabled, location override audited, stale-session closing, event immutability, one open session, multiple sessions refused, group policy replaces the university policy.
+- `StudentIdentityTest` (8): contact-only phone, duplicate phone refused at the phone step and at confirm, other universities unaffected, Telegram rebind by supervisor and admin with history kept, single use, expiry, scope and status checks.
+- Location anti-spoofing in `AttendanceServiceTest`: map-picked point, live location without accuracy, late message, accuracy hard cap, reused point from another student or another day, same-day repeat flagged. Tests shift each sent point by 1e-7° (`tests/Concerns/FreshCoordinates.php`) because real fixes never repeat exactly.
 - `AttendancePostgisTest` (PostgreSQL only): `ST_DWithin` at 99 m, 99.9999 m and 101 m with points projected by `ST_Project`; two concurrent check-ins produce one session (lock timeout `55P03`, unique `23505`); immutability trigger.
 - `AttendanceWebTest` (14): the D4 formula on seven scenario students, totals, minimum off and group policy, 62-day cap, admin list and filters, evidence page, supervisor scope 404 and admin-only 403, corrections and close-session with audit and untouched originals, report and scoped CSV with formula-injection guard and owner-only download, export rate limit 429, dashboard tiles.
 - `NotificationsAndOpsTest` (10): assignment notification once after commit, none after rollback, change-request decision notification, blocked students skipped, failures recorded, `/health`, forwarded HTTPS trusted only from `TRUSTED_PROXIES`, `admin:ensure`, `telegram:webhook` HTTPS and secret checks, schedule list.
@@ -40,7 +42,13 @@ Latest run: `composer test:pgsql` 285 tests, 1957 assertions, OK. `php artisan t
 | 09:00–11:00 and 12:00–14:00 | 4 h total |
 | Policy group row present | group row wins as a whole |
 | Policy group row absent | university row is used |
-| Accuracy null threshold | accuracy is stored and not rejected |
+| Accuracy null threshold | accuracy up to 300 m is stored and not rejected |
+| Policy threshold above 300 m | 301 m still LOW_ACCURACY (hard cap) |
+| No accuracy, not live (map pick) | MAP_LOCATION, failed event, no session |
+| No accuracy, live location | accepted |
+| Message `date` older than 180 s | STALE_LOCATION |
+| Exact point of another student / own point from another day | REUSED_LOCATION with `reused_event_id` |
+| Exact point again the same day | accepted, flagged `repeated_coordinates_event_id` |
 | Accuracy worse than a set threshold | LOW_ACCURACY |
 | Assignment overlap | refused |
 | Change request second approve | refused |
@@ -99,6 +107,9 @@ Boundary tests must build real geography points and call PostGIS, not a PHP have
 | Location message | reaches AttendanceService |
 | Non-location message while a location is required | no verified event |
 | Menu command during onboarding | no partial student row |
+| Typed phone or someone else's contact | refused; only own contact button accepted |
+| Phone already registered in the university (any format) | PHONE_REGISTERED at the phone step and at confirm; other universities not affected |
+| Rebind link from supervisor/admin | new account takes the same profile, history and open session; old account loses access and is told; link works once, expires in 24 h; another student's account and a blocked student refused; foreign scope 404 |
 
 ## 4. Concurrency
 

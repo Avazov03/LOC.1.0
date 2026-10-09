@@ -144,10 +144,13 @@ class DatabaseSeeder extends Seeder
         $at = function (string $date, string $time) use ($tz) {
             Carbon::setTestNow(CarbonImmutable::parse("{$date} {$time}", $tz)->utc());
         };
-        $inside = function (Organization $org, float $shift = 0.0003) use ($near) {
+        // Every fix differs by a few centimetres, as real GPS does; an exact repeat would be refused as a reused point.
+        $fix = 0;
+        $inside = function (Organization $org, float $shift = 0.0003) use ($near, &$fix) {
             $point = $near($org);
+            $fix++;
 
-            return new LocationInput($point['latitude'] + $shift, $point['longitude'], 15.0);
+            return new LocationInput($point['latitude'] + $shift + $fix * 3e-7, $point['longitude'] - $fix * 2e-7, 15.0);
         };
         $outside = function (Organization $org) use ($near) {
             $point = $near($org);

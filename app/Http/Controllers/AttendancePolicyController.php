@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AttendancePolicy;
 use App\Models\StudentGroup;
 use App\Services\Attendance\AttendancePolicyService;
+use App\Services\Attendance\AttendanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -74,7 +75,7 @@ class AttendancePolicyController extends Controller
             'minimum_duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
             'multiple_sessions_allowed' => ['sometimes', 'boolean', 'declined'],
             'location_required' => ['required', 'boolean'],
-            'accuracy_threshold_meters' => ['nullable', 'integer', 'min:5', 'max:5000'],
+            'accuracy_threshold_meters' => ['nullable', 'integer', 'min:5', 'max:'.AttendanceService::MAX_ACCURACY_METERS],
             'manual_correction_allowed' => ['required', 'boolean'],
         ]);
     }

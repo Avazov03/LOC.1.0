@@ -6,6 +6,7 @@ use App\Enums\MembershipStatus;
 use App\Enums\StudentStatus;
 use App\Enums\UserRole;
 use App\Models\AcademicYear;
+use App\Models\AttendanceEvent;
 use App\Models\Faculty;
 use App\Models\Program;
 use App\Models\StudentGroup;
@@ -14,6 +15,7 @@ use App\Models\StudentProfile;
 use App\Models\StudyYear;
 use App\Models\University;
 use App\Models\User;
+use App\Services\Attendance\AttendanceOutcome;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -81,6 +83,11 @@ class AcademicStructureTest extends TestCase
         $this->assertSame(2, Program::query()->count());
         $this->assertSame(3, StudentGroup::query()->count());
         $this->assertDatabaseHas('users', ['login' => 'admin', 'role' => 'ADMIN']);
+
+        $reasons = AttendanceEvent::query()->get()->map(fn (AttendanceEvent $event) => $event->metadata['reason'] ?? null);
+        $this->assertGreaterThan(0, AttendanceEvent::query()->where('verification_status', 'VERIFIED')->count());
+        $this->assertNotContains(AttendanceOutcome::REUSED_LOCATION, $reasons, 'Demo fixes must not look like reused points.');
+        $this->assertNotContains(AttendanceOutcome::MAP_LOCATION, $reasons);
     }
 
     public function test_a_student_cannot_have_two_active_group_memberships(): void

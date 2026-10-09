@@ -4,6 +4,7 @@ import AuditTable from '@/Components/AuditTable';
 import ChangeRequestTable from '@/Components/ChangeRequestTable';
 import Icon from '@/Components/Icon';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
+import { StudentTelegramLink, StudentTelegramStatus } from '@/Components/StudentTelegramRebind';
 import { Button, Card, CardHeader, Dl, EmptyRow, Field, Input, Select, StatusBadge, Table, Td, Textarea } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
 import type { Assignment, AuditEntry, ChangeRequest, StudentDetail } from '@/types';
@@ -90,13 +91,15 @@ export default function StudentShow({
                             ['Telefon', student.phone],
                             ['Talaba ID', student.student_code],
                             ['Holat', <StatusBadge key="s" status={student.status} />],
-                            ['Telegram ID', student.telegram_user_id],
+                            ['Telegram ID', student.telegram_user_id || '—'],
+                            ['Telegram', <StudentTelegramStatus key="tg" studentId={student.id} linked={student.telegram_linked} active={student.status === 'ACTIVE'} />],
                             ['O‘quv yili', student.academic_year],
                             ['Guruh', student.group],
                             ['Ro‘yxatdan o‘tgan', student.registered_at],
                             ['Joriy tashkilot', open ? `${open.organization ?? '—'} (${open.status === 'ACTIVE' ? 'faol' : 'kutilmoqda'})` : 'Biriktirilmagan'],
                         ]}
                     />
+                    <StudentTelegramLink />
                 </Card>
 
                 <Card>

@@ -26,6 +26,7 @@ use App\Services\Onboarding\OnboardingException;
 use App\Services\Onboarding\StudentOnboardingService;
 use App\Services\Students\StudentAccessException;
 use App\Services\Students\StudentContextService;
+use App\Services\Students\StudentTelegramRebindService;
 use App\Services\Supervisors\SupervisorTelegramService;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -71,6 +72,8 @@ class BotHandler
     /** /start attempts with a token per Telegram user per minute. */
     public const JOIN_PER_MINUTE = 5;
 
+    private const ASK_PHONE = 'Telefon raqamingizni pastdagi «📱 Raqamni yuborish» tugmasi orqali yuboring. Qo‘lda yozilgan raqam qabul qilinmaydi.';
+
     private const ORGANIZATION_LIST_LIMIT = 30;
 
     private const HISTORY_DAYS = 7;
@@ -84,6 +87,7 @@ class BotHandler
         private readonly ConversationStore $conversations,
         private readonly SupervisorTelegramService $supervisorTelegram,
         private readonly AttendanceMarkService $marks,
+        private readonly StudentTelegramRebindService $rebind,
     ) {}
 
     /**
@@ -155,6 +159,9 @@ class BotHandler
     {
         if (str_starts_with($token, SupervisorTelegramService::PREFIX)) {
             return $this->linkSupervisor($update, substr($token, strlen(SupervisorTelegramService::PREFIX)));
+        }
+        if (str_starts_with($token, StudentTelegramRebindService::PREFIX)) {
+            return $this->rebindStudent($update, substr($token, strlen(StudentTelegramRebindService::PREFIX)));
         }
 
         $existing = StudentProfile::query()->where('telegram_user_id', $update->userId)->first();
@@ -228,6 +235,43 @@ class BotHandler
         ]), $student ? Keyboard::menu() : Keyboard::remove())];
     }
 
+    /**
+     * @return list<Reply>
+     */
+    private function rebindStudent(Update $update, string $token): array
+    {
+        $key = 'tg-join:'.$update->userId;
+        if (RateLimiter::tooManyAttempts($key, self::JOIN_PER_MINUTE)) {
+            return [$this->reply($update, BotText::RATE_LIMITED)];
+        }
+        RateLimiter::hit($key, 60);
+
+        try {
+            $result = $this->rebind->rebind($token, $update->userId);
+        } catch (OnboardingException) {
+            return [$this->reply($update, 'Bu Telegram hisobi boshqa talabaga bog‘langan. Shu talaba profilingizga ulangan Telegram hisobidan foydalaning yoki rahbaringizga murojaat qiling.', $this->isRegistered($update->userId) ? Keyboard::menu() : Keyboard::remove())];
+        }
+        if ($result === null) {
+            return [$this->reply($update, 'Havola noto‘g‘ri yoki muddati tugagan. Rahbaringizdan yangi havola so‘rang.', $this->isRegistered($update->userId) ? Keyboard::menu() : Keyboard::remove())];
+        }
+
+        $previous = $result['previous_telegram_user_id'];
+        $this->conversations->clear($update->userId);
+        $replies = [$this->reply($update, BotText::lines([
+            '✅ Telegram hisobingiz talaba profilingizga ulandi: '.$result['student']->fullName().'.',
+            'Davomat tarixi va amaliyot joyingiz saqlangan. Davomatni shu hisobdan qayd eting.',
+        ]), Keyboard::menu())];
+        if ($previous !== null && $previous !== $update->userId) {
+            $this->conversations->clear($previous);
+            $replies[] = new Reply($previous, BotText::lines([
+                'ℹ️ Talaba profilingiz boshqa Telegram hisobiga ko‘chirildi. Bu hisobdan endi davomat qayd etib bo‘lmaydi.',
+                'Agar buni siz qilmagan bo‘lsangiz, darhol rahbaringizga murojaat qiling.',
+            ]), Keyboard::remove());
+        }
+
+        return $replies;
+    }
+
     private function supervisorHelp(SupervisorProfile $supervisor): string
     {
         $supervisor->loadMissing('university:id,reminder_time');
@@ -264,19 +308,26 @@ class BotHandler
                 }
                 $this->conversations->put($update->userId, self::JOIN_PHONE, [...$context, 'last_name' => $this->cleanName($text)]);
 
-                return [$this->reply($update, 'Telefon raqamingizni «📱 Raqamni yuborish» tugmasi orqali yuboring yoki +998901234567 ko‘rinishida yozing:', Keyboard::contact())];
+                return [$this->reply($update, self::ASK_PHONE, Keyboard::contact())];
 
             case self::JOIN_PHONE:
-                if ($update->contact !== null) {
-                    if ($update->contact['user_id'] !== null && $update->contact['user_id'] !== $update->userId) {
-                        return [$this->reply($update, 'Faqat o‘zingizning telefon raqamingizni yuboring.', Keyboard::contact())];
-                    }
-                    $phone = $this->normalizePhone($update->contact['phone']);
-                } else {
-                    $phone = $this->normalizePhone($text);
+                // Only the "share my number" button proves the number belongs to this Telegram account.
+                if ($update->contact === null) {
+                    return [$this->reply($update, self::ASK_PHONE, Keyboard::contact())];
                 }
+                if ($update->contact['user_id'] !== $update->userId) {
+                    return [$this->reply($update, 'Faqat o‘zingizning telefon raqamingizni «📱 Raqamni yuborish» tugmasi orqali yuboring.', Keyboard::contact())];
+                }
+                $phone = $this->normalizePhone($update->contact['phone']);
                 if ($phone === null) {
-                    return [$this->reply($update, 'Telefon raqami noto‘g‘ri. Masalan: +998901234567', Keyboard::contact())];
+                    return [$this->reply($update, 'Telefon raqamingiz qabul qilinmadi. Rahbaringizga murojaat qiling.', Keyboard::contact())];
+                }
+                try {
+                    $this->onboarding->assertPhoneAvailable((string) ($context['h'] ?? ''), $phone);
+                } catch (OnboardingException $exception) {
+                    $this->conversations->clear($update->userId);
+
+                    return [$this->reply($update, $exception->getMessage(), Keyboard::remove())];
                 }
                 $this->conversations->put($update->userId, self::JOIN_STUDENT_CODE, [...$context, 'phone' => $phone]);
 
