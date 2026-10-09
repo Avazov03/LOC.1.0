@@ -1,5 +1,6 @@
 import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { FormEvent, useState } from 'react';
+import { WorkDaysPicker } from '@/Components/AttendanceUi';
 import Icon from '@/Components/Icon';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
 import ParticipantAssign from '@/Components/ParticipantAssign';
@@ -31,6 +32,13 @@ export default function InternshipShow({ internship, periods, invites, participa
     const inviteForm = useForm<{ expires_at: string }>({ expires_at: '' });
     const [datesOpen, setDatesOpen] = useState(false);
     const datesForm = useForm({ period_start: internship.period_start, period_end: internship.period_end });
+    const [daysOpen, setDaysOpen] = useState(false);
+    const daysForm = useForm<{ work_days: number[] }>({ work_days: internship.work_days });
+
+    function updateDays(event: FormEvent) {
+        event.preventDefault();
+        daysForm.put(`/internships/${internship.id}/work-days`, { preserveScroll: true, onSuccess: () => setDaysOpen(false) });
+    }
 
     function updateDates(event: FormEvent) {
         event.preventDefault();
@@ -77,6 +85,9 @@ export default function InternshipShow({ internship, periods, invites, participa
                                 <Button variant="secondary" icon="calendar" onClick={() => setDatesOpen(true)}>
                                     Muddatni o‘zgartirish
                                 </Button>
+                                <Button variant="secondary" icon="clock" onClick={() => { daysForm.setData('work_days', internship.work_days); setDaysOpen(true); }}>
+                                    Amaliyot kunlari
+                                </Button>
                                 <Button variant="tonal" icon="userCheck" onClick={() => setReplaceOpen(true)} disabled={supervisors.length === 0}>
                                     Rahbarni almashtirish
                                 </Button>
@@ -87,6 +98,7 @@ export default function InternshipShow({ internship, periods, invites, participa
                         items={[
                             ['O‘quv yili', internship.year],
                             ['Muddat', `${internship.period_start} — ${internship.period_end}`],
+                            ['Amaliyot kunlari', internship.work_days_label],
                             ['Joriy rahbar', current?.supervisor ?? '—'],
                             ['Talabalar', participants.length],
                         ]}
@@ -145,6 +157,8 @@ export default function InternshipShow({ internship, periods, invites, participa
 
                 <ParticipantAssign
                     internshipId={internship.id}
+                    groupWorkDays={internship.work_days}
+                    groupWorkDaysLabel={internship.work_days_label}
                     periodStart={internship.period_start}
                     periodEnd={internship.period_end}
                     participants={participants}
@@ -208,6 +222,30 @@ export default function InternshipShow({ internship, periods, invites, participa
                             Bekor
                         </Button>
                         <Button type="submit" disabled={datesForm.processing}>
+                            Saqlash
+                        </Button>
+                    </ModalFooter>
+                </form>
+            </Modal>
+
+            <Modal title="Amaliyot kunlari" open={daysOpen} onClose={() => setDaysOpen(false)}>
+                <form onSubmit={updateDays} noValidate>
+                    <ModalBody>
+                        <p className="text-sm text-muted">
+                            Butun guruh uchun. Boshqa kunlarda bot kelishni qabul qilmaydi va ular «Kelmadi» hisoblanmaydi. O‘zgarish o‘tgan kunlar hisobiga ham ta’sir qiladi.
+                            Alohida kunlari belgilangan talabalarga ta’sir qilmaydi.
+                        </p>
+                        <WorkDaysPicker
+                            value={daysForm.data.work_days}
+                            onChange={(days) => daysForm.setData('work_days', days)}
+                            error={daysForm.errors.work_days ?? Object.entries(daysForm.errors).find(([key]) => key.startsWith('work_days.'))?.[1]}
+                        />
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button variant="secondary" onClick={() => setDaysOpen(false)}>
+                            Bekor
+                        </Button>
+                        <Button type="submit" disabled={daysForm.processing || daysForm.data.work_days.length === 0}>
                             Saqlash
                         </Button>
                     </ModalFooter>

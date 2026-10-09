@@ -41,7 +41,7 @@ class ReportController extends Controller
             ->withQueryString();
 
         $totals = DB::query()->fromSub($summary, 's')->selectRaw(
-            'COUNT(*) AS students, COALESCE(SUM(present_days), 0) AS present, COALESCE(SUM(partial_days), 0) AS partial, COALESCE(SUM(incomplete_days), 0) AS incomplete, '.
+            'COUNT(*) AS students, COALESCE(SUM(present_days), 0) AS present, COALESCE(SUM(marked_days), 0) AS marked, COALESCE(SUM(excused_days), 0) AS excused, COALESCE(SUM(incomplete_days), 0) AS incomplete, '.
             'COALESCE(SUM(rejected_days), 0) AS rejected, COALESCE(SUM(absent_days), 0) AS absent, COALESCE(SUM(failed_attempts), 0) AS failed, COALESCE(SUM(completed_seconds), 0) AS seconds'
         )->first();
 
@@ -60,7 +60,8 @@ class ReportController extends Controller
                 'group' => $groups[$row->student_profile_id] ?? null,
                 'organization' => $organizations[$row->student_profile_id] ?? null,
                 'present' => (int) $row->present_days,
-                'partial' => (int) $row->partial_days,
+                'marked' => (int) $row->marked_days,
+                'excused' => (int) $row->excused_days,
                 'incomplete' => (int) $row->incomplete_days,
                 'rejected' => (int) $row->rejected_days,
                 'absent' => (int) $row->absent_days,

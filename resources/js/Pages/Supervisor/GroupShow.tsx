@@ -21,6 +21,7 @@ export default function GroupShow({ internship, participants, organizations }: {
                         items={[
                             ['O‘quv yili', internship.year],
                             ['Muddat', `${internship.period_start} — ${internship.period_end}`],
+                            ['Amaliyot kunlari', internship.work_days_label],
                             ['Talabalar', participants.length],
                             ['Biriktirilgan', participants.filter((participant) => participant.assignment !== null).length],
                         ]}
@@ -28,6 +29,8 @@ export default function GroupShow({ internship, participants, organizations }: {
                 </Card>
                 <ParticipantAssign
                     internshipId={internship.id}
+                    groupWorkDays={internship.work_days}
+                    groupWorkDaysLabel={internship.work_days_label}
                     periodStart={internship.period_start}
                     periodEnd={internship.period_end}
                     participants={participants}

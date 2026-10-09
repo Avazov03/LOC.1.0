@@ -13,6 +13,8 @@ use App\Models\AttendanceSession;
 use App\Models\InternshipAssignment;
 use App\Models\StudentProfile;
 use App\Models\University;
+use App\Services\Notifications\SupervisorNotifier;
+use App\Support\WorkDays;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +29,8 @@ class AttendanceService
     public function __construct(
         private readonly AttendancePolicyService $policies,
         private readonly LocationVerifier $verifier,
+        private readonly WorkScheduleService $schedules,
+        private readonly SupervisorNotifier $supervisors,
     ) {}
 
     /**
@@ -41,6 +45,9 @@ class AttendanceService
         }
         if (! $gate['policy']['check_in_enabled']) {
             return new AttendanceOutcome(AttendanceOutcome::CHECK_IN_DISABLED);
+        }
+        if ($notWorkDay = $this->notWorkDay($gate)) {
+            return $notWorkDay;
         }
 
         $this->closeStaleFor($gate['student'], $gate['local_date'], $now);
@@ -83,6 +90,10 @@ class AttendanceService
         ['assignment' => $assignment, 'policy' => $policy, 'local_date' => $localDate] = $gate;
         if (! $policy['check_in_enabled']) {
             return new AttendanceOutcome(AttendanceOutcome::CHECK_IN_DISABLED);
+        }
+        // Not a failed attempt: nothing is expected that day, so no event is written.
+        if ($notWorkDay = $this->notWorkDay($gate)) {
+            return $notWorkDay;
         }
 
         $measure = null;
@@ -131,11 +142,14 @@ class AttendanceService
                 ], $location, $measure, $now, $localDate, $source, $updateId, $policy);
                 $session->forceFill(['check_in_event_id' => $event->id])->save();
 
-                return new AttendanceOutcome(AttendanceOutcome::CHECKED_IN, [
+                $outcome = new AttendanceOutcome(AttendanceOutcome::CHECKED_IN, [
                     'time' => $now->setTimezone($gate['university']->timezone)->format('H:i'),
                     'organization' => $assignment->organization->name,
                     'distance' => $measure !== null ? (int) round($measure['distance']) : null,
                 ], $event);
+                $this->supervisors->attendance($outcome, $gate['student'], $assignment);
+
+                return $outcome;
             });
         } catch (UniqueConstraintViolationException) {
             // A parallel check-in won the one-open-session index, or this update id was already stored.
@@ -201,12 +215,15 @@ class AttendanceService
                     'duration_seconds' => $duration,
                 ])->save();
 
-                return new AttendanceOutcome(AttendanceOutcome::CHECKED_OUT, [
+                $outcome = new AttendanceOutcome(AttendanceOutcome::CHECKED_OUT, [
                     'time' => $now->setTimezone($gate['university']->timezone)->format('H:i'),
                     'organization' => $assignment->organization->name,
                     'distance' => $measure !== null ? (int) round($measure['distance']) : null,
                     'duration_seconds' => $duration,
                 ], $event);
+                $this->supervisors->attendance($outcome, $gate['student'], $assignment);
+
+                return $outcome;
             });
         } catch (UniqueConstraintViolationException) {
             return new AttendanceOutcome(AttendanceOutcome::NO_OPEN_SESSION);
@@ -268,7 +285,7 @@ class AttendanceService
         $assignment = InternshipAssignment::query()
             ->where('student_profile_id', $student->id)
             ->where('status', AssignmentStatus::Active->value)
-            ->with(['organization:id,name,status', 'internship:id,period_start,period_end'])
+            ->with(['organization:id,name,status', 'internship:id,period_start,period_end,work_days'])
             ->first();
         if ($assignment === null) {
             return new AttendanceOutcome(AttendanceOutcome::NO_ASSIGNMENT);
@@ -292,6 +309,19 @@ class AttendanceService
             'university' => $university,
             'local_date' => $localDate,
         ];
+    }
+
+    /**
+     * @param  array{student: StudentProfile, assignment: InternshipAssignment, local_date: string}  $gate
+     */
+    private function notWorkDay(array $gate): ?AttendanceOutcome
+    {
+        $mask = $this->schedules->maskFor($gate['student']->id, $gate['assignment']->internship);
+        if (WorkDays::includes($mask, $gate['local_date'])) {
+            return null;
+        }
+
+        return new AttendanceOutcome(AttendanceOutcome::NOT_WORK_DAY, ['days' => WorkDays::label($mask)]);
     }
 
     /**

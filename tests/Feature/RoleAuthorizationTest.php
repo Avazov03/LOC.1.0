@@ -72,7 +72,7 @@ class RoleAuthorizationTest extends TestCase
             ->get('/dashboard')
             ->assertInertia(function ($page) {
                 $hrefs = collect($page->toArray()['props']['navigation'])->pluck('href')->filter()->values()->all();
-                $this->assertSame(['/dashboard', '/my-groups', '/my-students', '/attendance', '/reports', '/change-requests'], $hrefs);
+                $this->assertSame(['/dashboard', '/my-groups', '/my-students', '/attendance', '/reports', '/change-requests', '/profile'], $hrefs);
             });
     }
 }

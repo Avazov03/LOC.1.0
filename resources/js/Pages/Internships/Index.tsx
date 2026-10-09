@@ -1,5 +1,6 @@
 import { Link, useForm } from '@inertiajs/react';
 import { FormEvent, useState } from 'react';
+import { WorkDaysPicker } from '@/Components/AttendanceUi';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
 import { Button, Card, CardHeader, EmptyRow, Field, Input, Pagination, Select, Table, Td } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
@@ -13,6 +14,7 @@ type Row = {
     year: string;
     period_start: string;
     period_end: string;
+    work_days_label: string;
     supervisor: string | null;
     participants_count: number;
     active_assignments_count: number;
@@ -20,13 +22,16 @@ type Row = {
 
 type SupervisorOption = { id: number; name: string; position: string };
 
+type CreateForm = { student_group_id: number | ''; supervisor_profile_id: number | ''; period_start: string; period_end: string; work_days: number[] };
+
 export default function InternshipsIndex({ internships, groups, supervisors }: { internships: Paginated<Row>; groups: Option[]; supervisors: SupervisorOption[] }) {
     const [open, setOpen] = useState(false);
-    const form = useForm<{ student_group_id: number | ''; supervisor_profile_id: number | ''; period_start: string; period_end: string }>({
+    const form = useForm<CreateForm>({
         student_group_id: groups[0]?.id ?? '',
         supervisor_profile_id: supervisors[0]?.id ?? '',
         period_start: '',
         period_end: '',
+        work_days: [1, 2, 3, 4, 5, 6],
     });
 
     function submit(event: FormEvent) {
@@ -35,22 +40,27 @@ export default function InternshipsIndex({ internships, groups, supervisors }: {
     }
 
     const blocked = groups.length === 0 || supervisors.length === 0;
+    const daysError = form.errors.work_days ?? Object.entries(form.errors).find(([key]) => key.startsWith('work_days.'))?.[1];
 
     return (
         <AppLayout title="Amaliyot guruhlari">
             <Card>
                 <CardHeader
                     title="Amaliyot guruhlari"
-                    description={blocked ? 'Avval akademik guruh va faol rahbar qo‘shing.' : 'Har bir amaliyot guruhi: bitta akademik guruh, o‘quv yili, muddat va rahbar.'}
+                    description={
+                        blocked
+                            ? 'Avval akademik guruh va faol rahbar qo‘shing.'
+                            : 'Har bir amaliyot guruhi: bitta akademik guruh, o‘quv yili, muddat (bir necha haftadan bir yilgacha), amaliyot kunlari va rahbar.'
+                    }
                     action={
                         <Button icon="plus" disabled={blocked} onClick={() => setOpen(true)}>
                             Yangi amaliyot guruhi
                         </Button>
                     }
                 />
-                <Table head={['Guruh', 'Yo‘nalish / kurs', 'O‘quv yili', 'Muddat', 'Rahbar', 'Talabalar', 'Faol biriktirish']}>
+                <Table head={['Guruh', 'Yo‘nalish / kurs', 'O‘quv yili', 'Muddat', 'Kunlar', 'Rahbar', 'Talabalar', 'Faol biriktirish']}>
                     {internships.data.length === 0 ? (
-                        <EmptyRow colSpan={7}>Amaliyot guruhi yo‘q.</EmptyRow>
+                        <EmptyRow colSpan={8}>Amaliyot guruhi yo‘q.</EmptyRow>
                     ) : (
                         internships.data.map((row) => (
                             <tr key={row.id}>
@@ -67,6 +77,7 @@ export default function InternshipsIndex({ internships, groups, supervisors }: {
                                 <Td className="whitespace-nowrap">
                                     {row.period_start} — {row.period_end}
                                 </Td>
+                                <Td className="text-sm">{row.work_days_label}</Td>
                                 <Td>{row.supervisor ?? '—'}</Td>
                                 <Td>{row.participants_count}</Td>
                                 <Td>{row.active_assignments_count}</Td>
@@ -106,12 +117,17 @@ export default function InternshipsIndex({ internships, groups, supervisors }: {
                                 <Input id="period_end" type="date" value={form.data.period_end} onChange={(event) => form.setData('period_end', event.target.value)} />
                             </Field>
                         </div>
+                        <div>
+                            <p className="mb-2 text-sm font-medium text-heading">Amaliyot kunlari</p>
+                            <WorkDaysPicker value={form.data.work_days} onChange={(days) => form.setData('work_days', days)} error={daysError} />
+                            <p className="mt-2 text-xs text-muted">Boshqa kunlarda bot kelishni qabul qilmaydi va ular «Kelmadi» hisoblanmaydi. Alohida talabaga keyin boshqa kunlar berish mumkin.</p>
+                        </div>
                     </ModalBody>
                     <ModalFooter>
                         <Button variant="secondary" onClick={() => setOpen(false)}>
                             Bekor
                         </Button>
-                        <Button type="submit" disabled={form.processing}>
+                        <Button type="submit" disabled={form.processing || form.data.work_days.length === 0}>
                             Yaratish
                         </Button>
                     </ModalFooter>

@@ -62,7 +62,7 @@ COMPLETE means every applicable layer below is done. N/A means the layer does no
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | University-wide list with filters and search | `AttendanceController`, `AttendanceFilters` | Done; paginated by 25 | Filters, status tiles | Admin university only | `AttendanceWebTest` | Filters and search | COMPLETE |
 | Manual correction and closing an open session | `AttendanceCorrectionService` | Done; new event, originals untouched, audited | Forms with required reason | Admin only, when policy allows | `AttendanceWebTest` | Closed a session with a reason; success flash; day became PRESENT | COMPLETE |
-| Report summary for up to 62 days | `ReportController`, `AttendanceDayQuery::summary` | Done | Report page with totals | Own scope | `AttendanceWebTest` | Totals shown | COMPLETE |
+| Report summary for up to 366 days | `ReportController`, `AttendanceDayQuery::summary` | Done | Report page with totals | Own scope | `AttendanceWebTest` | Totals shown | COMPLETE |
 | Queued CSV (summary and daily), owner-only download, formula guard | `AttendanceReportService`, `GenerateAttendanceReport` | Done; streamed in chunks of 200 | Export list with status and download | Owner only; 5/min | `AttendanceWebTest` | Daily CSV built by the Docker queue (35 rows) and downloaded | COMPLETE |
 | Notifications for assignment changes and decisions | `StudentNotifier`, `SendTelegramNotification` | Done; after commit, idempotent key | Bot message | Blocked students skipped | `NotificationsAndOpsTest` | N/A | COMPLETE |
 

@@ -9,11 +9,13 @@ use App\Models\InternshipSupervisorPeriod;
 use App\Services\Academic\AcademicStructureService;
 use App\Services\Access\AccessScope;
 use App\Services\Assignments\InternshipAssignmentService;
+use App\Services\Attendance\WorkScheduleService;
 use App\Services\Internships\InternshipService;
 use App\Services\Internships\InviteService;
 use App\Services\Organizations\OrganizationService;
 use App\Services\Supervisors\SupervisorService;
 use App\Support\Present;
+use App\Support\WorkDays;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -40,6 +42,7 @@ class InternshipController extends Controller
                 'year' => $internship->academicYear->name,
                 'period_start' => $internship->period_start->toDateString(),
                 'period_end' => $internship->period_end->toDateString(),
+                'work_days_label' => WorkDays::label($internship->work_days),
                 'supervisor' => $internship->currentPeriod?->supervisor?->user?->name,
                 'participants_count' => $internship->participants_count,
                 'active_assignments_count' => $internship->active_assignments_count,
@@ -60,9 +63,30 @@ class InternshipController extends Controller
             $request->integer('supervisor_profile_id'),
             $request->string('period_start')->toString(),
             $request->string('period_end')->toString(),
+            WorkDays::fromDays($request->input('work_days', WorkDays::toDays(WorkDays::ALL))),
         );
 
         return redirect()->route('internships.show', $internship->id)->with('success', 'Amaliyot guruhi yaratildi.');
+    }
+
+    public function updateWorkDays(Request $request, int $internship, WorkScheduleService $schedules): RedirectResponse
+    {
+        $data = $request->validate(['work_days' => ['required', 'array', 'min:1', 'max:7'], 'work_days.*' => ['integer', 'between:1,7', 'distinct']]);
+        $schedules->setInternship($request->user(), $internship, $data['work_days']);
+
+        return back()->with('success', 'Amaliyot kunlari saqlandi.');
+    }
+
+    /**
+     * Admin, or the supervisor running the internship. An empty list goes back to the internship's days.
+     */
+    public function updateStudentWorkDays(Request $request, int $internship, int $student, WorkScheduleService $schedules): RedirectResponse
+    {
+        $data = $request->validate(['work_days' => ['nullable', 'array', 'max:7'], 'work_days.*' => ['integer', 'between:1,7', 'distinct']]);
+        $days = $data['work_days'] ?? [];
+        $schedules->setStudent($request->user(), $internship, $student, $days === [] ? null : $days);
+
+        return back()->with('success', $days === [] ? 'Talaba guruh jadvaliga qaytarildi.' : 'Talabaning amaliyot kunlari saqlandi.');
     }
 
     public function show(Request $request, int $internship, OrganizationService $organizations, SupervisorService $supervisors, InternshipAssignmentService $assignments): Response
@@ -81,6 +105,8 @@ class InternshipController extends Controller
                 'year' => $model->academicYear->name,
                 'period_start' => $model->period_start->toDateString(),
                 'period_end' => $model->period_end->toDateString(),
+                'work_days' => WorkDays::toDays($model->work_days),
+                'work_days_label' => WorkDays::label($model->work_days),
             ],
             'periods' => $model->supervisorPeriods->map(fn (InternshipSupervisorPeriod $period) => [
                 'id' => $period->id,

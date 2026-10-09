@@ -1,8 +1,8 @@
 import { Link } from '@inertiajs/react';
-import { AttendanceFilterBar, DayStatusBadge, duration } from '@/Components/AttendanceUi';
+import { AttendanceFilterBar, DayMarkControls, DayStatusBadge, duration } from '@/Components/AttendanceUi';
 import { Badge, Card, CardHeader, EmptyRow, Pagination, Table, Td } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
-import type { AttendanceFilterOptions, AttendanceFilterValues, DayStatus, Paginated, StatusOption } from '@/types';
+import type { AttendanceFilterOptions, AttendanceFilterValues, DayMark, DayStatus, Paginated, StatusOption } from '@/types';
 
 type Row = {
     student_id: number;
@@ -15,15 +15,16 @@ type Row = {
     completed_seconds: number;
     open: boolean;
     failed_count: number;
+    mark: DayMark | null;
 };
 
 type Totals = Record<DayStatus | 'EXPECTED', number>;
 
 const cards: Array<{ key: DayStatus; label: string; className: string }> = [
     { key: 'PRESENT', label: 'Keldi', className: 'text-[#56ca00] dark:text-success' },
-    { key: 'PARTIAL', label: 'Qisman', className: 'text-[#00a7cc] dark:text-info' },
     { key: 'INCOMPLETE', label: 'Yakunlanmagan', className: 'text-[#e09600] dark:text-warning' },
     { key: 'LOCATION_REJECTED', label: 'Joylashuv rad etildi', className: 'text-danger' },
+    { key: 'EXCUSED', label: 'Sababli', className: 'text-[#00a7cc] dark:text-info' },
     { key: 'ABSENT', label: 'Kelmadi', className: 'text-secondary' },
 ];
 
@@ -34,6 +35,7 @@ export default function AttendanceIndex({
     rows,
     today,
     statuses,
+    canMark,
 }: {
     filters: AttendanceFilterValues;
     options: AttendanceFilterOptions;
@@ -41,7 +43,10 @@ export default function AttendanceIndex({
     rows: Paginated<Row>;
     today: string;
     statuses: StatusOption[];
+    canMark: boolean;
 }) {
+    const date = filters.date ?? today;
+
     return (
         <AppLayout title="Davomat">
             <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
@@ -59,18 +64,18 @@ export default function AttendanceIndex({
 
             <Card>
                 <CardHeader
-                    title={`Kunlik davomat · ${filters.date}`}
-                    description="Holat server vaqti va tasdiqlangan joylashuv bo‘yicha hisoblanadi. Talabani bosib, dalillar va urinishlarni ko‘ring."
+                    title={`Kunlik davomat · ${date}`}
+                    description="Talaba kelish va ketishni botda qayd etadi, ishlagan vaqti yoniga yoziladi. Talaba boshqa joyda bo‘lgan yoki sababli kelmagan bo‘lsa, «Keldi» yoki «Sababli» deb belgilang. Faqat amaliyot kunlari hisoblanadi."
                 />
                 <AttendanceFilterBar url="/attendance" filters={filters} options={options} statuses={statuses} max={today} />
-                <Table head={['Talaba', 'Guruh', 'Tashkilot', 'Kelish', 'Ketish', 'Davomiylik', 'Holat', '']}>
+                <Table head={['Talaba', 'Guruh', 'Tashkilot', 'Kelish', 'Ketish', 'Ishlagan vaqt', 'Holat', '']}>
                     {rows.data.length === 0 ? (
                         <EmptyRow colSpan={8}>Bu sana va filtr bo‘yicha davomat yozuvi yo‘q.</EmptyRow>
                     ) : (
                         rows.data.map((row) => (
                             <tr key={row.student_id}>
                                 <Td className="font-medium text-heading">
-                                    <Link href={`/attendance/students/${row.student_id}?from=${filters.date}&to=${filters.date}`} className="hover:text-primary-600">
+                                    <Link href={`/attendance/students/${row.student_id}?from=${date}&to=${date}`} className="hover:text-primary-600">
                                         {row.name}
                                     </Link>
                                 </Td>
@@ -80,16 +85,19 @@ export default function AttendanceIndex({
                                 <Td className="tabular-nums">{row.last_check_out ?? (row.open ? <Badge tone="warning">ochiq</Badge> : '—')}</Td>
                                 <Td className="tabular-nums whitespace-nowrap">{duration(row.completed_seconds)}</Td>
                                 <Td>
-                                    <DayStatusBadge status={row.status} />
+                                    <DayStatusBadge status={row.status} mark={row.mark} />
                                     {row.failed_count > 0 ? <span className="mt-1 block text-xs text-danger">{row.failed_count} ta rad etilgan urinish</span> : null}
                                 </Td>
                                 <Td className="text-right">
-                                    <Link
-                                        href={`/attendance/students/${row.student_id}`}
-                                        className="inline-flex items-center rounded-md bg-primary-500/15 px-3 py-1.5 text-[0.8125rem] font-medium text-primary-600 hover:bg-primary-500/25 dark:text-primary-300"
-                                    >
-                                        Tarix
-                                    </Link>
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                        <DayMarkControls studentId={row.student_id} date={date} status={row.status} mark={row.mark} canMark={canMark} />
+                                        <Link
+                                            href={`/attendance/students/${row.student_id}`}
+                                            className="inline-flex items-center rounded-md bg-primary-500/15 px-3 py-1.5 text-[0.8125rem] font-medium text-primary-600 hover:bg-primary-500/25 dark:text-primary-300"
+                                        >
+                                            Tarix
+                                        </Link>
+                                    </div>
                                 </Td>
                             </tr>
                         ))

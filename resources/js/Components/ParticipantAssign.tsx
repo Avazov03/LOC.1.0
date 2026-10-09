@@ -1,11 +1,14 @@
 import { Link, useForm, usePage } from '@inertiajs/react';
 import { FormEvent, useMemo, useState } from 'react';
+import { WorkDaysPicker } from '@/Components/AttendanceUi';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
 import { Button, Card, CardHeader, EmptyRow, Field, Input, Select, StatusBadge, Table, Td } from '@/Components/ui';
 import type { OrganizationOption, Participant, SharedProps } from '@/types';
 
 type Props = {
     internshipId: number;
+    groupWorkDays: number[];
+    groupWorkDaysLabel: string;
     periodStart: string;
     periodEnd: string;
     participants: Participant[];
@@ -16,10 +19,27 @@ type Props = {
 /**
  * Participant list with multi-select and bulk assignment (§21, §22). The server validates every student again.
  */
-export default function ParticipantAssign({ internshipId, periodStart, periodEnd, participants, organizations, studentHref }: Props) {
+export default function ParticipantAssign({ internshipId, groupWorkDays, groupWorkDaysLabel, periodStart, periodEnd, participants, organizations, studentHref }: Props) {
     const { flash } = usePage<SharedProps>().props;
     const [selected, setSelected] = useState<number[]>([]);
     const [open, setOpen] = useState(false);
+    const [scheduling, setScheduling] = useState<Participant | null>(null);
+    const days = useForm<{ work_days: number[] }>({ work_days: groupWorkDays });
+
+    function editDays(participant: Participant) {
+        days.clearErrors();
+        days.setData('work_days', participant.work_days ?? groupWorkDays);
+        setScheduling(participant);
+    }
+
+    function saveDays(event: { preventDefault: () => void }, reset = false) {
+        event.preventDefault();
+        if (!scheduling) {
+            return;
+        }
+        days.transform((data) => ({ work_days: reset ? [] : data.work_days }));
+        days.put(`/internships/${internshipId}/students/${scheduling.id}/work-days`, { preserveScroll: true, onSuccess: () => setScheduling(null) });
+    }
     const form = useForm<{ internship_id: number; organization_id: number | ''; student_ids: number[]; start_date: string; end_date: string }>({
         internship_id: internshipId,
         organization_id: organizations[0]?.id ?? '',
@@ -89,10 +109,11 @@ export default function ParticipantAssign({ internshipId, periodStart, periodEnd
                     'Joriy tashkilot',
                     'Muddat',
                     'Holat',
+                    'Amaliyot kunlari',
                 ]}
             >
                 {participants.length === 0 ? (
-                    <EmptyRow colSpan={6}>Hali talaba qo‘shilmagan. Talabalar taklif havolasi orqali Telegram botda ro‘yxatdan o‘tadi.</EmptyRow>
+                    <EmptyRow colSpan={7}>Hali talaba qo‘shilmagan. Talabalar taklif havolasi orqali Telegram botda ro‘yxatdan o‘tadi.</EmptyRow>
                 ) : (
                     participants.map((participant) => (
                         <tr key={participant.id}>
@@ -122,6 +143,12 @@ export default function ParticipantAssign({ internshipId, periodStart, periodEnd
                                 {participant.assignment ? `${participant.assignment.start_at} — ${participant.assignment.end_at}` : '—'}
                             </Td>
                             <Td>{participant.assignment ? <StatusBadge status={participant.assignment.status} /> : null}</Td>
+                            <Td className="whitespace-nowrap text-sm">
+                                <button type="button" className="text-left hover:text-primary-600" onClick={() => editDays(participant)}>
+                                    {participant.work_days_label ?? <span className="text-muted">Guruh bo‘yicha</span>}
+                                    <span className="block text-xs text-primary-600 dark:text-primary-300">o‘zgartirish</span>
+                                </button>
+                            </Td>
                         </tr>
                     ))
                 )}
@@ -157,6 +184,35 @@ export default function ParticipantAssign({ internshipId, periodStart, periodEnd
                         </Button>
                         <Button type="submit" disabled={form.processing || form.data.organization_id === ''}>
                             Biriktirish
+                        </Button>
+                    </ModalFooter>
+                </form>
+            </Modal>
+
+            <Modal title={`Amaliyot kunlari · ${scheduling?.name ?? ''}`} open={scheduling !== null} onClose={() => setScheduling(null)}>
+                <form onSubmit={(event) => saveDays(event)} noValidate>
+                    <ModalBody>
+                        <p className="text-sm text-muted">
+                            Guruh kunlari: <span className="font-medium text-heading">{groupWorkDaysLabel}</span>. Bu talaba boshqa kunlarda ishlasa, uning kunlarini alohida belgilang.
+                            Boshqa kunlarda bot kelishni qabul qilmaydi va ular «Kelmadi» hisoblanmaydi.
+                        </p>
+                        <WorkDaysPicker
+                            value={days.data.work_days}
+                            onChange={(value) => days.setData('work_days', value)}
+                            error={days.errors.work_days ?? Object.entries(days.errors).find(([key]) => key.startsWith('work_days.'))?.[1]}
+                        />
+                    </ModalBody>
+                    <ModalFooter>
+                        {scheduling?.work_days ? (
+                            <Button variant="ghost" disabled={days.processing} onClick={(event) => saveDays(event, true)}>
+                                Guruh kunlariga qaytarish
+                            </Button>
+                        ) : null}
+                        <Button variant="secondary" onClick={() => setScheduling(null)}>
+                            Bekor
+                        </Button>
+                        <Button type="submit" disabled={days.processing || days.data.work_days.length === 0}>
+                            Saqlash
                         </Button>
                     </ModalFooter>
                 </form>

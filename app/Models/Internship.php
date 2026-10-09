@@ -15,6 +15,7 @@ class Internship extends Model
         'student_group_id',
         'period_start',
         'period_end',
+        'work_days',
         'created_by',
     ];
 
@@ -23,6 +24,7 @@ class Internship extends Model
         return [
             'period_start' => 'date',
             'period_end' => 'date',
+            'work_days' => 'integer',
         ];
     }
 

@@ -55,6 +55,8 @@ class Present
             'student_code' => $student->student_code,
             'status' => $student->status->value,
             'joined_at' => self::dateTime($participant->joined_at, $timezone),
+            'work_days' => $participant->work_days === null ? null : WorkDays::toDays($participant->work_days),
+            'work_days_label' => $participant->work_days === null ? null : WorkDays::label($participant->work_days),
             'assignment' => $open ? [
                 'id' => $open->id,
                 'organization' => $open->organization?->name,

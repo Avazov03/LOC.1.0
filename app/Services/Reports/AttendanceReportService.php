@@ -2,6 +2,8 @@
 
 namespace App\Services\Reports;
 
+use App\Enums\DayMarkKind;
+use App\Enums\DayStatus;
 use App\Jobs\GenerateAttendanceReport;
 use App\Models\InternshipAssignment;
 use App\Models\ReportExport;
@@ -9,6 +11,7 @@ use App\Models\StudentProfile;
 use App\Models\User;
 use App\Services\Attendance\AttendanceDayQuery;
 use App\Support\AttendanceFilters;
+use App\Telegram\BotText;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -61,8 +64,8 @@ class AttendanceReportService
         $handle = fopen($disk->path($path), 'wb');
         fwrite($handle, "\xEF\xBB\xBF");
         fputcsv($handle, $daily
-            ? ['Sana', 'F.I.Sh.', 'Talaba ID', 'Guruh', 'Tashkilot', 'Holat', 'Kelish', 'Ketish', 'Davomiylik (daqiqa)', 'Rad etilgan urinishlar']
-            : ['F.I.Sh.', 'Talaba ID', 'Telefon', 'Guruh', 'Tashkilot', 'Keldi', 'Qisman', 'Yakunlanmagan', 'Joylashuv rad etildi', 'Kelmadi', 'Rad etilgan urinishlar', 'Jami soat'], ',', '"', '');
+            ? ['Sana', 'F.I.Sh.', 'Talaba ID', 'Guruh', 'Tashkilot', 'Holat', 'Kelish', 'Ketish', 'Davomiylik', 'Davomiylik (daqiqa)', 'Rahbar belgisi', 'Izoh', 'Rad etilgan urinishlar']
+            : ['F.I.Sh.', 'Talaba ID', 'Telefon', 'Guruh', 'Tashkilot', 'Keldi', 'shundan rahbar belgilagan', 'Sababli', 'Yakunlanmagan', 'Joylashuv rad etildi', 'Kelmadi', 'Rad etilgan urinishlar', 'Jami vaqt', 'Jami soat'], ',', '"', '');
 
         $rows = 0;
         $this->filters->students($user, $filters)
@@ -86,10 +89,13 @@ class AttendanceReportService
                             $student?->student_code,
                             $student?->currentGroup?->name,
                             $organizations[$row->student_profile_id] ?? null,
-                            $row->day_status,
+                            DayStatus::from($row->day_status)->label(),
                             $this->time($row->first_check_in, $tz),
                             $this->time($row->last_check_out, $tz),
+                            BotText::duration((int) $row->completed_seconds),
                             intdiv((int) $row->completed_seconds, 60),
+                            $row->mark_kind !== null ? DayMarkKind::from($row->mark_kind)->label() : null,
+                            $row->mark_note,
                             (int) $row->failed_count,
                         ]), ',', '"', '');
                         $rows++;
@@ -107,11 +113,13 @@ class AttendanceReportService
                         $student?->currentGroup?->name,
                         $organizations[$row->student_profile_id] ?? null,
                         (int) $row->present_days,
-                        (int) $row->partial_days,
+                        (int) $row->marked_days,
+                        (int) $row->excused_days,
                         (int) $row->incomplete_days,
                         (int) $row->rejected_days,
                         (int) $row->absent_days,
                         (int) $row->failed_attempts,
+                        BotText::duration((int) $row->completed_seconds),
                         round(((int) $row->completed_seconds) / 3600, 2),
                     ]), ',', '"', '');
                     $rows++;

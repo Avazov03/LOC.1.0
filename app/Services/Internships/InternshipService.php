@@ -12,6 +12,7 @@ use App\Models\SupervisorProfile;
 use App\Models\User;
 use App\Services\Access\AccessScope;
 use App\Services\Audit\AuditLogger;
+use App\Support\WorkDays;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -57,12 +58,15 @@ class InternshipService
             ->get();
     }
 
-    public function create(User $actor, int $groupId, int $supervisorProfileId, string $periodStart, string $periodEnd): Internship
+    public function create(User $actor, int $groupId, int $supervisorProfileId, string $periodStart, string $periodEnd, int $workDays = WorkDays::ALL): Internship
     {
         $this->scope->requireAdmin($actor);
 
         if ($periodEnd < $periodStart) {
             throw ValidationException::withMessages(['period_end' => 'Tugash sanasi boshlanish sanasidan oldin bo‘lmasligi kerak.']);
+        }
+        if (! WorkDays::valid($workDays)) {
+            throw ValidationException::withMessages(['work_days' => 'Kamida bitta hafta kunini tanlang.']);
         }
 
         $group = StudentGroup::query()
@@ -71,13 +75,14 @@ class InternshipService
             ->findOrFail($groupId);
         $supervisor = $this->activeSupervisor($actor, $supervisorProfileId);
 
-        return DB::transaction(function () use ($actor, $group, $supervisor, $periodStart, $periodEnd) {
+        return DB::transaction(function () use ($actor, $group, $supervisor, $periodStart, $periodEnd, $workDays) {
             $internship = Internship::query()->create([
                 'university_id' => $actor->university_id,
                 'academic_year_id' => $group->studyYear->academic_year_id,
                 'student_group_id' => $group->id,
                 'period_start' => $periodStart,
                 'period_end' => $periodEnd,
+                'work_days' => $workDays,
                 'created_by' => $actor->id,
             ]);
 
@@ -93,6 +98,7 @@ class InternshipService
                 'academic_year_id' => $internship->academic_year_id,
                 'period_start' => $periodStart,
                 'period_end' => $periodEnd,
+                'work_days' => WorkDays::label($workDays),
             ]);
             $this->audit->log($actor, 'internship.supervisor_assign', $internship, null, [
                 'supervisor_profile_id' => $supervisor->id,

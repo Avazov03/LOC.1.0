@@ -6,6 +6,8 @@ use App\Enums\AssignmentStatus;
 use App\Enums\StudentStatus;
 use App\Models\InternshipAssignment;
 use App\Models\StudentProfile;
+use App\Services\Attendance\WorkScheduleService;
+use App\Support\WorkDays;
 
 /**
  * What a student channel may read about the caller (§4.3, §64, A10, A48). Keyed by Telegram user id only;
@@ -72,7 +74,7 @@ class StudentContextService
         return InternshipAssignment::query()
             ->where('student_profile_id', $student->id)
             ->whereIn('status', AssignmentStatus::openValues())
-            ->with(['organization:id,name,address', 'supervisor.user:id,name'])
+            ->with(['organization:id,name,address', 'supervisor.user:id,name', 'internship:id,work_days'])
             ->first();
     }
 
@@ -89,6 +91,7 @@ class StudentContextService
             'supervisor' => $assignment->supervisor?->user?->name,
             'start_at' => $assignment->start_at->copy()->setTimezone($timezone)->format('Y-m-d H:i'),
             'end_at' => $assignment->end_at->copy()->setTimezone($timezone)->format('Y-m-d H:i'),
+            'work_days' => WorkDays::label(app(WorkScheduleService::class)->maskFor($assignment->student_profile_id, $assignment->internship)),
         ];
     }
 }

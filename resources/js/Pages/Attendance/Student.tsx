@@ -1,12 +1,23 @@
 import { Link, router, useForm } from '@inertiajs/react';
 import { FormEvent, useState } from 'react';
-import { DayStatusBadge, duration } from '@/Components/AttendanceUi';
+import { DayMarkControls, DayStatusBadge, duration } from '@/Components/AttendanceUi';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
 import { Badge, Button, Card, CardHeader, Dl, EmptyRow, Field, Input, StatusBadge, Table, Td, Textarea } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
-import type { DayStatus } from '@/types';
+import type { DayMark, DayStatus } from '@/types';
 
-type Day = { date: string; status: DayStatus | null; first_check_in: string | null; last_check_out: string | null; completed_seconds: number; failed_count: number };
+type Day = {
+    date: string;
+    status: DayStatus | null;
+    expected: boolean;
+    first_check_in: string | null;
+    last_check_out: string | null;
+    completed_seconds: number;
+    open: boolean;
+    failed_count: number;
+    mark: DayMark | null;
+    can_mark: boolean;
+};
 type Session = { id: number; date: string; status: 'OPEN' | 'COMPLETED' | 'INCOMPLETE'; opened_at: string; closed_at: string | null; duration_seconds: number | null; organization: string | null };
 type Event = {
     id: number;
@@ -33,7 +44,6 @@ type Policy = {
     source: string;
     check_in_enabled: boolean;
     check_out_enabled: boolean;
-    minimum_duration_minutes: number | null;
     multiple_sessions_allowed: boolean;
     location_required: boolean;
     accuracy_threshold_meters: number | null;
@@ -53,7 +63,9 @@ export default function AttendanceStudent({
     sessions,
     events,
     policy,
+    workDays,
     canCorrect,
+    markDays,
     backUrl,
 }: {
     student: { id: number; name: string; group: string | null; student_code: string | null; phone: string; status: string };
@@ -64,9 +76,14 @@ export default function AttendanceStudent({
     sessions: Session[];
     events: Event[];
     policy: Policy;
+    workDays: string | null;
     canCorrect: boolean;
+    markDays: number | null;
     backUrl: string;
 }) {
+    const listed = days.filter((day) => day.status);
+    const totalSeconds = listed.reduce((sum, day) => sum + day.completed_seconds, 0);
+    const presentDays = listed.filter((day) => day.status === 'PRESENT').length;
     const [adding, setAdding] = useState(false);
     const [closing, setClosing] = useState<Session | null>(null);
     const add = useForm({ date: to, check_in: '09:00', check_out: '', reason: '' });
@@ -110,38 +127,45 @@ export default function AttendanceStudent({
                             ['Talaba ID', student.student_code],
                             ['Telefon', student.phone],
                             ['Holat', <StatusBadge key="s" status={student.status} />],
+                            ['Amaliyot kunlari', workDays ?? '—'],
                         ]}
                     />
                     <div className="border-t border-line px-6 py-4 text-sm text-muted">
-                        Siyosat ({policy.source === 'GROUP' ? 'guruh' : policy.source === 'UNIVERSITY' ? 'universitet' : 'standart'}): minimal davomiylik{' '}
-                        {policy.minimum_duration_minutes ? `${policy.minimum_duration_minutes} daqiqa` : 'o‘chiq'} · bir kunda bir nechta sessiya{' '}
-                        {policy.multiple_sessions_allowed ? 'ruxsat' : 'yo‘q'} · joylashuv {policy.location_required ? 'majburiy' : 'talab qilinmaydi'} · aniqlik chegarasi{' '}
+                        Siyosat ({policy.source === 'GROUP' ? 'guruh' : policy.source === 'UNIVERSITY' ? 'universitet' : 'standart'}): majburiy soat yo‘q, ishlagan vaqt
+                        ko‘rsatiladi · bir kunda bir nechta sessiya {policy.multiple_sessions_allowed ? 'ruxsat' : 'yo‘q'} · joylashuv{' '}
+                        {policy.location_required ? 'majburiy' : 'talab qilinmaydi'} · aniqlik chegarasi{' '}
                         {policy.accuracy_threshold_meters ? `${policy.accuracy_threshold_meters} m` : 'o‘chiq'}
                     </div>
                 </Card>
 
                 <Card>
-                    <CardHeader title="Kunlar" description={`${from} — ${to}`} />
+                    <CardHeader
+                        title="Kunlar"
+                        description={`${from} — ${to} · keldi: ${presentDays} kun · jami vaqt: ${duration(totalSeconds)}${markDays ? ` · rahbar so‘nggi ${markDays} kunni belgilay oladi` : ''}`}
+                    />
                     <div className="flex flex-wrap gap-3 px-6 pb-4">
                         <Input type="date" className="sm:max-w-[11rem]" value={from} max={today} onChange={(event) => range({ from: event.target.value })} aria-label="Boshlanish sanasi" />
                         <Input type="date" className="sm:max-w-[11rem]" value={to} max={today} onChange={(event) => range({ to: event.target.value })} aria-label="Tugash sanasi" />
                     </div>
-                    <Table head={['Sana', 'Holat', 'Kelish', 'Ketish', 'Davomiylik', 'Rad etilgan']}>
-                        {days.filter((day) => day.status).length === 0 ? (
-                            <EmptyRow colSpan={6}>Bu oraliqda davomat yozuvi yo‘q.</EmptyRow>
+                    <Table head={['Sana', 'Holat', 'Kelish', 'Ketish', 'Ishlagan vaqt', 'Rad etilgan', '']}>
+                        {listed.length === 0 ? (
+                            <EmptyRow colSpan={7}>Bu oraliqda davomat yozuvi yo‘q.</EmptyRow>
                         ) : (
-                            days
-                                .filter((day) => day.status)
-                                .map((day) => (
-                                    <tr key={day.date}>
-                                        <Td className="tabular-nums whitespace-nowrap">{day.date}</Td>
-                                        <Td><DayStatusBadge status={day.status} /></Td>
-                                        <Td className="tabular-nums">{day.first_check_in ?? '—'}</Td>
-                                        <Td className="tabular-nums">{day.last_check_out ?? '—'}</Td>
-                                        <Td className="tabular-nums whitespace-nowrap">{duration(day.completed_seconds)}</Td>
-                                        <Td className="tabular-nums">{day.failed_count || '—'}</Td>
-                                    </tr>
-                                ))
+                            listed.map((day) => (
+                                <tr key={day.date}>
+                                    <Td className="tabular-nums whitespace-nowrap">{day.date}</Td>
+                                    <Td>
+                                        <DayStatusBadge status={day.status} mark={day.mark} />
+                                    </Td>
+                                    <Td className="tabular-nums">{day.first_check_in ?? '—'}</Td>
+                                    <Td className="tabular-nums">{day.last_check_out ?? (day.open ? <Badge tone="warning">ochiq</Badge> : '—')}</Td>
+                                    <Td className="tabular-nums whitespace-nowrap">{duration(day.completed_seconds)}</Td>
+                                    <Td className="tabular-nums">{day.failed_count || '—'}</Td>
+                                    <Td className="text-right">
+                                        <DayMarkControls studentId={student.id} date={day.date} status={day.status} mark={day.mark} canMark={day.can_mark} />
+                                    </Td>
+                                </tr>
+                            ))
                         )}
                     </Table>
                     <div className="h-2" />

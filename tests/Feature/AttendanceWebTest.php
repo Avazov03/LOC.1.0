@@ -36,7 +36,7 @@ class AttendanceWebTest extends TestCase
     }
 
     /**
-     * Seven students on one day: PRESENT, PARTIAL, INCOMPLETE, LOCATION_REJECTED, ABSENT (expected), ABSENT (failed), and one with nothing.
+     * Seven students on one day: PRESENT (5 h), PRESENT (1 h), INCOMPLETE, LOCATION_REJECTED, ABSENT (expected), ABSENT (failed), and one with nothing.
      *
      * @return array<string, mixed>
      */
@@ -53,22 +53,21 @@ class AttendanceWebTest extends TestCase
         foreach (array_slice($students, 0, 6) as $student) {
             $this->placement($world['internship'], $student, $world['org']);
         }
-        app(AttendancePolicyService::class)->saveUniversity($world['admin'], ['minimum_duration_minutes' => 240]);
         $service = app(AttendanceService::class);
-        [$present, $partial, $incomplete, $rejected, $absent, $failed, $none] = $students;
+        [$present, $short, $incomplete, $rejected, $absent, $failed, $none] = $students;
 
         $this->at(9);
         $service->checkIn($present, $this->inside());
-        $service->checkIn($partial, $this->inside());
+        $service->checkIn($short, $this->inside());
         $service->checkIn($incomplete, $this->inside());
         $service->checkIn($rejected, new LocationInput(41.3135, 69.2797, 10.0));
         $service->checkIn($failed, new LocationInput(200.0, 0.0, 10.0));
         $this->at(10);
-        $service->checkOut($partial, $this->inside());
+        $service->checkOut($short, $this->inside());
         $this->at(14);
         $service->checkOut($present, $this->inside());
 
-        return [...$world, 'cast' => compact('present', 'partial', 'incomplete', 'rejected', 'absent', 'failed', 'none')];
+        return [...$world, 'cast' => compact('present', 'short', 'incomplete', 'rejected', 'absent', 'failed', 'none')];
     }
 
     public function test_day_status_formula_covers_every_status(): void
@@ -83,7 +82,7 @@ class AttendanceWebTest extends TestCase
 
         $expected = [
             'present' => 'PRESENT',
-            'partial' => 'PARTIAL',
+            'short' => 'PRESENT',
             'incomplete' => 'INCOMPLETE',
             'rejected' => 'LOCATION_REJECTED',
             'absent' => 'ABSENT',
@@ -94,26 +93,29 @@ class AttendanceWebTest extends TestCase
             $this->assertSame($status, $rows[$world['cast'][$who]->id]->day_status, $who);
         }
         $this->assertSame(5 * 3600, (int) $rows[$world['cast']['present']->id]->completed_seconds);
+        $this->assertSame(3600, (int) $rows[$world['cast']['short']->id]->completed_seconds);
 
         $totals = app(AttendanceDayQuery::class)->totals(StudentProfile::query()->where('university_id', $world['university']->id), $today, 'Asia/Tashkent');
-        $this->assertSame(['PRESENT' => 1, 'PARTIAL' => 1, 'INCOMPLETE' => 1, 'LOCATION_REJECTED' => 1, 'ABSENT' => 2, 'EXPECTED' => 6], $totals);
+        $this->assertSame(['PRESENT' => 2, 'INCOMPLETE' => 1, 'LOCATION_REJECTED' => 1, 'EXCUSED' => 0, 'ABSENT' => 2, 'EXPECTED' => 6], $totals);
     }
 
-    public function test_minimum_off_makes_any_completed_session_present_and_group_policy_wins(): void
+    public function test_an_old_minimum_duration_no_longer_changes_the_day_status(): void
     {
         $world = $this->scenarioDay();
         $today = now('Asia/Tashkent')->toDateString();
-        app(AttendancePolicyService::class)->saveGroup($world['admin'], $world['group']->id, ['minimum_duration_minutes' => null]);
+        app(AttendancePolicyService::class)->saveUniversity($world['admin'], ['minimum_duration_minutes' => 240]);
 
-        $row = app(AttendanceDayQuery::class)->rows(StudentProfile::query()->whereKey($world['cast']['partial']->id), [$today], 'Asia/Tashkent')->first();
+        $row = app(AttendanceDayQuery::class)->rows(StudentProfile::query()->whereKey($world['cast']['short']->id), [$today], 'Asia/Tashkent')->first();
 
         $this->assertSame('PRESENT', $row->day_status);
+        $this->assertSame(3600, (int) $row->completed_seconds);
     }
 
-    public function test_date_range_is_capped(): void
+    public function test_date_range_covers_a_year_and_is_capped(): void
     {
-        $dates = AttendanceDayQuery::dateRange('2026-01-01', '2026-12-31');
+        $this->assertCount(92, AttendanceDayQuery::dateRange('2026-09-01', '2026-12-01'));
 
+        $dates = AttendanceDayQuery::dateRange('2025-01-01', '2026-12-31');
         $this->assertCount(AttendanceDayQuery::MAX_RANGE_DAYS, $dates);
         $this->assertSame('2026-12-31', end($dates));
     }
@@ -270,7 +272,8 @@ class AttendanceWebTest extends TestCase
         $this->actingAs($world['admin'])->get("/reports?from={$today}&to={$today}")->assertOk()->assertInertia(fn ($page) => $page
             ->component('Reports/Index')
             ->where('totals.students', 6)
-            ->where('totals.present', 1)
+            ->where('totals.present', 2)
+            ->where('totals.seconds', 6 * 3600)
             ->where('totals.absent', 2));
 
         $this->actingAs($world['supervisor'])->post('/reports/export', ['from' => $today, 'to' => $today, 'type' => 'daily'])->assertSessionHas('success');
@@ -281,7 +284,8 @@ class AttendanceWebTest extends TestCase
 
         $csv = Storage::disk('local')->get($export->path);
         $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
-        $this->assertStringContainsString('LOCATION_REJECTED', $csv);
+        $this->assertStringContainsString('Joylashuv rad etildi', $csv);
+        $this->assertStringContainsString('1 soat 0 daqiqa', $csv);
         $this->assertStringContainsString("'=HYPERLINK", $csv);
         $this->assertStringNotContainsString($other['students'][0]->last_name, $csv);
 
@@ -326,7 +330,9 @@ class AttendanceWebTest extends TestCase
         $world = $this->scenarioDay();
 
         $this->actingAs($world['admin'])->get('/dashboard')->assertOk()->assertInertia(fn ($page) => $page
-            ->where('attendance.PRESENT', 1)
-            ->where('attendance.EXPECTED', 6));
+            ->where('attendance.PRESENT', 2)
+            ->where('attendance.EXPECTED', 6)
+            ->where('unmarked.total', 3)
+            ->has('unmarked.rows', 3));
     }
 }

@@ -7,11 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class InternshipParticipant extends Model
 {
-    protected $fillable = ['internship_id', 'student_profile_id', 'internship_invite_id', 'joined_at'];
+    protected $fillable = ['internship_id', 'student_profile_id', 'internship_invite_id', 'joined_at', 'work_days'];
 
     protected function casts(): array
     {
-        return ['joined_at' => 'datetime'];
+        return ['joined_at' => 'datetime', 'work_days' => 'integer'];
     }
 
     public function internship(): BelongsTo

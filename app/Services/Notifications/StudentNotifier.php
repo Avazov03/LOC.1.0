@@ -3,9 +3,11 @@
 namespace App\Services\Notifications;
 
 use App\Jobs\SendTelegramNotification;
+use App\Models\AttendanceSession;
 use App\Models\InternshipAssignment;
 use App\Models\InternshipChangeRequest;
 use App\Models\TelegramNotification;
+use App\Telegram\BotText;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -60,7 +62,15 @@ class StudentNotifier
         $this->queue("change_request:{$request->id}:{$status}", $request->student_profile_id, $text);
     }
 
-    private function queue(string $key, int $studentId, string $text): void
+    /**
+     * @return bool false when this session was already reminded
+     */
+    public function checkoutReminder(AttendanceSession $session): bool
+    {
+        return $this->queue("checkout_reminder:{$session->id}", $session->student_profile_id, BotText::CHECKOUT_REMINDER);
+    }
+
+    private function queue(string $key, int $studentId, string $text): bool
     {
         $inserted = DB::table('telegram_notifications')->insertOrIgnore([
             'key' => $key,
@@ -72,10 +82,12 @@ class StudentNotifier
             'updated_at' => now(),
         ]);
         if ($inserted !== 1) {
-            return;
+            return false;
         }
 
         $id = TelegramNotification::query()->where('key', $key)->value('id');
         SendTelegramNotification::dispatch((int) $id)->afterCommit();
+
+        return true;
     }
 }

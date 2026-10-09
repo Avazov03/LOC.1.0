@@ -9,6 +9,7 @@ use App\Models\InternshipSupervisorPeriod;
 use App\Models\SupervisorProfile;
 use App\Services\Audit\AuditLogger;
 use App\Services\Supervisors\SupervisorService;
+use App\Services\Supervisors\SupervisorTelegramService;
 use App\Support\Present;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -56,6 +57,8 @@ class SupervisorController extends Controller
                 'status' => $profile->user->status->value,
                 'last_login_at' => Present::dateTime($audit->lastLogin($profile->user), $timezone),
                 'open_students' => $openStudents,
+                'telegram_linked' => $profile->telegram_user_id !== null,
+                'telegram_linked_at' => Present::dateTime($profile->telegram_linked_at, $timezone),
             ],
             'periods' => $periods->map(fn (InternshipSupervisorPeriod $period) => [
                 'id' => $period->id,
@@ -85,6 +88,23 @@ class SupervisorController extends Controller
         $this->supervisors->update($request->user(), $supervisor, $request->validated());
 
         return back()->with('success', 'Rahbar yangilandi.');
+    }
+
+    public function telegramLink(Request $request, int $supervisor, SupervisorTelegramService $telegram): RedirectResponse
+    {
+        $profile = $this->supervisors->find($request->user(), $supervisor);
+
+        return back()->with([
+            'success' => 'Havolani rahbarga yuboring. U '.SupervisorTelegramService::LINK_HOURS.' soat amal qiladi va faqat hozir ko‘rsatiladi.',
+            'telegram_link' => $telegram->createLink($request->user(), $profile),
+        ]);
+    }
+
+    public function telegramUnlink(Request $request, int $supervisor, SupervisorTelegramService $telegram): RedirectResponse
+    {
+        $telegram->unlink($request->user(), $this->supervisors->find($request->user(), $supervisor));
+
+        return back()->with('success', 'Rahbarning Telegrami uzildi.');
     }
 
     public function status(Request $request, int $supervisor): RedirectResponse

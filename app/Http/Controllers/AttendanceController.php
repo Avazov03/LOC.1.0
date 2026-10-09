@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\AttendanceEventType;
+use App\Enums\DayMarkKind;
 use App\Enums\DayStatus;
 use App\Enums\VerificationStatus;
 use App\Models\AttendanceEvent;
@@ -12,14 +13,18 @@ use App\Models\StudentProfile;
 use App\Services\Access\AccessScope;
 use App\Services\Attendance\AttendanceCorrectionService;
 use App\Services\Attendance\AttendanceDayQuery;
+use App\Services\Attendance\AttendanceMarkService;
 use App\Services\Attendance\AttendancePolicyService;
+use App\Services\Attendance\WorkScheduleService;
 use App\Support\AttendanceFilters;
+use App\Support\WorkDays;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -33,6 +38,8 @@ class AttendanceController extends Controller
         private readonly AccessScope $scope,
         private readonly AttendanceDayQuery $days,
         private readonly AttendanceFilters $filters,
+        private readonly AttendanceMarkService $marks,
+        private readonly WorkScheduleService $schedules,
     ) {}
 
     public function index(Request $request): Response
@@ -54,14 +61,38 @@ class AttendanceController extends Controller
         $page = $listed->paginate(25)->withQueryString();
         $context = $this->context(collect($page->items())->pluck('student_profile_id')->all(), $filters['date'], $tz);
 
+        $today = $user->university->today();
+
         return Inertia::render('Attendance/Index', [
             'filters' => $filters,
             'options' => $this->filters->options($user),
             'totals' => $this->days->totals($this->filters->students($user, $filters), $filters['date'], $tz),
             'rows' => $page->through(fn ($row) => $this->presentDay($row, $context, $tz)),
-            'today' => $user->university->today(),
+            'today' => $today,
             'statuses' => $this->statusOptions(),
+            'canMark' => $this->marks->canMark($user, $filters['date'], $today),
         ]);
+    }
+
+    public function storeMark(Request $request, int $student): RedirectResponse
+    {
+        $data = $request->validate([
+            'date' => ['required', 'date_format:Y-m-d'],
+            'kind' => ['required', Rule::enum(DayMarkKind::class)],
+            'note' => ['nullable', 'string', 'max:500'],
+        ]);
+        $kind = DayMarkKind::from($data['kind']);
+        $this->marks->mark($request->user(), $student, $data['date'], $kind, $data['note'] ?? null);
+
+        return back()->with('success', $kind === DayMarkKind::Present ? 'Talaba shu kun uchun «Keldi» deb belgilandi.' : 'Kun «Sababli» deb belgilandi.');
+    }
+
+    public function revokeMark(Request $request, int $mark): RedirectResponse
+    {
+        $data = $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
+        $this->marks->revoke($request->user(), $mark, $data['reason'] ?? null);
+
+        return back()->with('success', 'Belgi bekor qilindi. Kun holati qayta hisoblandi.');
     }
 
     public function student(Request $request, int $student, AttendancePolicyService $policies): Response
@@ -83,10 +114,14 @@ class AttendanceController extends Controller
             ->map(fn ($row) => [
                 'date' => (string) $row->local_date,
                 'status' => $row->day_status,
+                'expected' => (int) $row->expected === 1,
                 'first_check_in' => $this->time($row->first_check_in, $tz),
                 'last_check_out' => $this->time($row->last_check_out, $tz),
                 'completed_seconds' => (int) $row->completed_seconds,
+                'open' => (int) $row->open_count > 0,
                 'failed_count' => (int) $row->failed_count,
+                'mark' => $this->presentMark($row),
+                'can_mark' => $this->marks->canMark($user, (string) $row->local_date, $today),
             ])
             ->values();
 
@@ -134,7 +169,9 @@ class AttendanceController extends Controller
             'sessions' => $sessions,
             'events' => $events,
             'policy' => ['source' => $policy['source'], ...$policy['rules']],
+            'workDays' => $this->workDays($profile->id),
             'canCorrect' => $user->isAdmin() && $policy['rules']['manual_correction_allowed'],
+            'markDays' => $user->isAdmin() ? null : AttendanceMarkService::SUPERVISOR_DAYS,
             'statuses' => $this->statusOptions(),
             'backUrl' => $user->isAdmin() ? '/academic/students/'.$profile->id : '/students/'.$profile->id,
         ]);
@@ -221,7 +258,32 @@ class AttendanceController extends Controller
             'completed_seconds' => (int) $row->completed_seconds,
             'open' => (int) $row->open_count > 0,
             'failed_count' => (int) $row->failed_count,
+            'mark' => $this->presentMark($row),
         ];
+    }
+
+    /**
+     * @return array{id: int, kind: string, note: ?string}|null
+     */
+    private function presentMark(object $row): ?array
+    {
+        return $row->mark_id === null ? null : ['id' => (int) $row->mark_id, 'kind' => (string) $row->mark_kind, 'note' => $row->mark_note];
+    }
+
+    /**
+     * The work days of the student's current (or latest) internship, as a label.
+     */
+    private function workDays(int $studentId): ?string
+    {
+        $assignment = InternshipAssignment::query()
+            ->where('student_profile_id', $studentId)
+            ->whereIn('status', ['PENDING', 'ACTIVE', 'ENDED'])
+            ->with('internship:id,work_days')
+            ->orderByRaw("CASE WHEN status = 'ACTIVE' THEN 0 ELSE 1 END")
+            ->orderByDesc('start_at')
+            ->first();
+
+        return $assignment?->internship ? WorkDays::label($this->schedules->maskFor($studentId, $assignment->internship)) : null;
     }
 
     /**

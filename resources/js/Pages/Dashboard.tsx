@@ -1,24 +1,40 @@
 import { Link, usePage } from '@inertiajs/react';
+import { DayMarkControls, DayStatusBadge } from '@/Components/AttendanceUi';
 import type { IconName } from '@/Components/Icon';
 import { Card, IconTile, type Tone } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
-import type { SharedProps } from '@/types';
+import type { DayStatus, SharedProps } from '@/types';
 
 type Stat = { label: string; value: number; icon: IconName; tone: Tone; href: string };
 
 const number = new Intl.NumberFormat('uz-UZ');
 
-type AttendanceTotals = Record<'PRESENT' | 'PARTIAL' | 'INCOMPLETE' | 'LOCATION_REJECTED' | 'ABSENT' | 'EXPECTED', number>;
+type AttendanceTotals = Record<DayStatus | 'EXPECTED', number>;
+type Unmarked = { total: number; rows: Array<{ student_id: number; name: string; status: DayStatus }> };
 
 const attendanceCards: Array<{ key: keyof AttendanceTotals; label: string; icon: IconName; tone: Tone }> = [
     { key: 'PRESENT', label: 'Keldi', icon: 'check', tone: 'success' },
-    { key: 'PARTIAL', label: 'Qisman', icon: 'clock', tone: 'info' },
-    { key: 'INCOMPLETE', label: 'Yakunlanmagan', icon: 'alert', tone: 'warning' },
+    { key: 'INCOMPLETE', label: 'Yakunlanmagan', icon: 'clock', tone: 'warning' },
     { key: 'LOCATION_REJECTED', label: 'Joylashuv rad etildi', icon: 'mapPin', tone: 'danger' },
+    { key: 'EXCUSED', label: 'Sababli', icon: 'alert', tone: 'info' },
     { key: 'ABSENT', label: 'Kelmadi', icon: 'ban', tone: 'secondary' },
 ];
 
-export default function Dashboard({ stats, timezone, attendance, today }: { stats: Stat[]; timezone: string; attendance: AttendanceTotals; today: string }) {
+export default function Dashboard({
+    stats,
+    timezone,
+    attendance,
+    unmarked,
+    reminderTime,
+    today,
+}: {
+    stats: Stat[];
+    timezone: string;
+    attendance: AttendanceTotals;
+    unmarked: Unmarked;
+    reminderTime: string;
+    today: string;
+}) {
     const { auth } = usePage<SharedProps>().props;
     const admin = auth.user?.role === 'ADMIN';
     const empty = !admin && stats[0]?.value === 0;
@@ -79,6 +95,38 @@ export default function Dashboard({ stats, timezone, attendance, today }: { stat
                     ))}
                 </div>
             </Card>
+
+            {unmarked.total > 0 && (
+                <Card className="mt-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6">
+                        <div>
+                            <h3 className="text-lg">Bugun belgilanmaganlar · {number.format(unmarked.total)}</h3>
+                            <p className="text-sm text-muted">
+                                Bugun amaliyot kuni, lekin kelish qayd etilmagan. Talaba boshqa joyda ishlagan bo‘lsa «Keldi», uzrli sabab bo‘lsa «Sababli» deb belgilang.
+                                {admin ? '' : ` Soat ${reminderTime} da shu ro‘yxat Telegram botingizga ham yuboriladi.`}
+                            </p>
+                        </div>
+                        {unmarked.total > unmarked.rows.length ? (
+                            <Link href={`/attendance?date=${today}&status=ABSENT`} className="text-sm font-medium text-primary-600 hover:underline dark:text-primary-300">
+                                Hammasi →
+                            </Link>
+                        ) : null}
+                    </div>
+                    <ul className="divide-y divide-line px-6 py-3">
+                        {unmarked.rows.map((row) => (
+                            <li key={row.student_id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                                <div className="flex items-center gap-3">
+                                    <Link href={`/attendance/students/${row.student_id}`} className="font-medium text-heading hover:text-primary-600">
+                                        {row.name}
+                                    </Link>
+                                    <DayStatusBadge status={row.status} />
+                                </div>
+                                <DayMarkControls studentId={row.student_id} date={today} status={row.status} mark={null} canMark />
+                            </li>
+                        ))}
+                    </ul>
+                </Card>
+            )}
 
             {empty && (
                 <Card className="mt-6 px-6 py-12 text-center">

@@ -20,7 +20,7 @@ class SettingsController extends Controller
         $university = $user->university;
 
         return Inertia::render('Settings', [
-            'university' => ['name' => $university->name, 'slug' => $university->slug, 'timezone' => $university->timezone],
+            'university' => ['name' => $university->name, 'slug' => $university->slug, 'timezone' => $university->timezone, 'reminder_time' => $university->reminder_time],
             'timezones' => DateTimeZone::listIdentifiers(),
             'history' => $audit->history($user, $university, 20)->map(fn (AuditLog $log) => Present::auditLog($log, $university->timezone))->values(),
         ]);
@@ -31,8 +31,9 @@ class SettingsController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'timezone' => ['required', 'string', 'timezone:all'],
+            'reminder_time' => ['sometimes', 'required', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
         ]);
-        $settings->update($request->user(), $data['name'], $data['timezone']);
+        $settings->update($request->user(), $data['name'], $data['timezone'], $data['reminder_time'] ?? null);
 
         return back()->with('success', 'Sozlamalar saqlandi.');
     }

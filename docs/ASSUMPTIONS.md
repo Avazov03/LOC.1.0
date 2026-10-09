@@ -32,19 +32,22 @@ These are no longer open. Later phases follow them. They do not add a rule the s
 
 **Rejected:** Accept the second session and mark the day with an undefined penalty.
 
-### D4. Day status when minimum duration is OFF
-**Gap:** §44 says OFF means the system records real attendance and does not name the day status. §43 says PRESENT means the policy requirement was met.
+### D4. Day status and duration (revised 2026-10)
+**Gap:** §44 says OFF means the system records real attendance and does not name the day status. §43 says PRESENT means the policy requirement was met. The contract allows `PARTIAL`.
 
-**Final:**
+**Final (product decision, replaces the earlier minimum-duration rule):** universities do not want a required number of hours. Supervisors want to see how long the student actually worked.
 
-- Minimum OFF, or duration greater than or equal to the configured minimum, and at least one COMPLETED session → `PRESENT`
-- Completed time above 0 but under the minimum → `PARTIAL`
+- At least one COMPLETED session → `PRESENT`, and the summed duration is shown next to it
 - Verified check-in whose session never checked out → `INCOMPLETE`
 - No verified check-in, and at least one radius rejection that day → `LOCATION_REJECTED`
-- No verified check-in and no rejection → `ABSENT`
-- `SUSPICIOUS` is never assigned automatically
+- Supervisor/admin mark `PRESENT` → `PRESENT`; mark `EXCUSED` (reason required) → `EXCUSED`
+- Expected work day with nothing of the above → `ABSENT`
+- Not a work day → no status, never `ABSENT`
+- `PARTIAL` is not used. `SUSPICIOUS` is never assigned automatically
 
-A one-minute completed session with minimum duration OFF is `PRESENT`, because no minimum was configured.
+The `minimum_duration_minutes` policy column is kept for history and ignored. See `ATTENDANCE-RULES.md` §8–8c for work days, marks and supervisor notifications.
+
+**Deferred:** a student "Boshqa joydaman" request from the bot, and a university holiday calendar.
 
 ### D5. May a supervisor create an assignment directly?
 **Conflict:** §21 says an admin or an authorized supervisor may assign a student to an organization. §4.2 does not list assignment among the supervisor’s everyday powers and never names the flag that makes a supervisor “authorized”.
@@ -178,7 +181,7 @@ An incomplete session contributes no duration.
 The status exists in the enum because §43 names it. MVP does not classify it (§68, §111). No fraud-detection job.
 
 ### A32. Policy resolution is whole-record
-MVP scopes are `UNIVERSITY` and `GROUP` only (§47, contract §30). Program and internship scopes are not implemented. If an active group policy exists, that row is used as a whole. Null `minimum_duration_minutes` on that row means OFF, not “inherit the university value”.
+MVP scopes are `UNIVERSITY` and `GROUP` only (§47, contract §30). Program and internship scopes are not implemented. If an active group policy exists, that row is used as a whole. `minimum_duration_minutes` is no longer used (D4, revised).
 
 Defaults for a newly created university policy, chosen because they match the spec rather than add a new rule:
 
@@ -186,7 +189,7 @@ Defaults for a newly created university policy, chosen because they match the sp
 | --- | --- | --- |
 | check_in_enabled | true | Attendance is the product |
 | check_out_enabled | true | Sessions need checkout |
-| minimum_duration_minutes | null | §44 OFF until an admin sets hours |
+| minimum_duration_minutes | null | Ignored since D4 was revised; no required hours |
 | multiple_sessions_allowed | true | §41 does not forbid them |
 | location_required | true | §67; turning it off is an explicit admin act |
 | accuracy_threshold_meters | null | A29 |
@@ -324,10 +327,10 @@ Events written by the system or by a manual correction (`SYSTEM_ADJUSTMENT`, `MA
 `multiple_sessions_allowed` defaults to false and cannot be turned on: the policy request rule is `declined`, `AttendancePolicyService::normalize()` refuses a true value, PostgreSQL has `CHECK attendance_policies_single_session (multiple_sessions_allowed = false)`, and the policy screen shows the switch disabled. A second check-in on a day that already has a session is refused (D3).
 
 ### A70. Expected days
-Every calendar day inside an ACTIVE assignment's range is an expected day. There is no work-calendar or weekend table in MVP; a day with no attempt in that range is ABSENT.
+A day is expected when an ACTIVE or ENDED assignment covers it and its weekday is in the effective work-day mask (student override, else the internship's mask; default every day). Only an expected day with nothing recorded is ABSENT. There is no holiday calendar yet (deferred).
 
 ### A71. Check-out disabled
-When the resolved policy turns check-out off, a verified check-in creates a COMPLETED session of 0 seconds. With minimum duration on, that day is PARTIAL.
+When the resolved policy turns check-out off, a verified check-in creates a COMPLETED session of 0 seconds, and the day is PRESENT.
 
 ### A72. Missing device accuracy
 A location without `horizontal_accuracy` passes the accuracy check. The null is stored as evidence (TEST-PLAN §1).
@@ -348,7 +351,7 @@ Onboarding asks for confirmation in a `JOIN_CONFIRM` state before writing the st
 `attendance:close-stale` (every 15 minutes) closes sessions left OPEN after the local day ends; the day stays INCOMPLETE. A check-in on the next day closes yesterday's open session the same way first.
 
 ### A78. Report range and filters
-Day reports and exports cover at most 62 days (`AttendanceDayQuery::MAX_RANGE_DAYS`). Export filters are read from the POST body. Day status has one SQL formula (`AttendanceDayQuery::STATUS_SQL`) used by dashboards, reports, CSV and the bot.
+Day reports and exports cover at most 366 days (`AttendanceDayQuery::MAX_RANGE_DAYS`), so a full-year internship fits one range. Export filters are read from the POST body. Day status has one SQL formula (`AttendanceDayQuery::STATUS_SQL`) used by dashboards, reports, CSV and the bot.
 
 ### A79. Notifications
 Student notifications (assignment changes, change-request decisions) are queued after commit and are idempotent by a unique key, so a rolled-back transaction never notifies and a retry never sends twice. Blocked students are skipped; failures are recorded.

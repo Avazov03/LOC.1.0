@@ -10,11 +10,11 @@ export default function Settings({
     timezones,
     history,
 }: {
-    university: { name: string; slug: string; timezone: string };
+    university: { name: string; slug: string; timezone: string; reminder_time: string };
     timezones: string[];
     history: AuditEntry[];
 }) {
-    const form = useForm({ name: university.name, timezone: university.timezone });
+    const form = useForm({ name: university.name, timezone: university.timezone, reminder_time: university.reminder_time });
 
     function submit(event: FormEvent) {
         event.preventDefault();
@@ -42,6 +42,19 @@ export default function Settings({
                                 ))}
                             </Select>
                         </Field>
+                        <Field label="Kunlik eslatma vaqti" htmlFor="reminder_time" error={form.errors.reminder_time}>
+                            <Input
+                                id="reminder_time"
+                                type="time"
+                                className="sm:max-w-[9rem]"
+                                value={form.data.reminder_time}
+                                onChange={(event) => form.setData('reminder_time', event.target.value)}
+                                aria-invalid={Boolean(form.errors.reminder_time)}
+                            />
+                        </Field>
+                        <p className="-mt-3 text-sm text-muted">
+                            Shu vaqtda ketishni qayd etmagan talabaga eslatma, rahbarlarga esa bugun kelmaganlar ro‘yxati Telegram orqali yuboriladi (universitet vaqt zonasi bo‘yicha).
+                        </p>
                         <p className="text-sm text-muted">Qisqa nom (slug): {university.slug}</p>
                         <div>
                             <Button type="submit" disabled={form.processing || !form.isDirty}>

@@ -50,16 +50,6 @@ function RulesFields({ data, setData, errors }: { data: Rules; setData: (key: ke
                 </label>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Minimal davomiylik (daqiqa)" htmlFor="minimum" error={errors.minimum_duration_minutes}>
-                    <Input
-                        id="minimum"
-                        type="number"
-                        min={1}
-                        placeholder="O‘chiq"
-                        value={data.minimum_duration_minutes ?? ''}
-                        onChange={(event) => setData('minimum_duration_minutes', event.target.value ? Number(event.target.value) : null)}
-                    />
-                </Field>
                 <Field label="Aniqlik chegarasi (metr)" htmlFor="accuracy" error={errors.accuracy_threshold_meters}>
                     <Input
                         id="accuracy"
@@ -77,7 +67,6 @@ function RulesFields({ data, setData, errors }: { data: Rules; setData: (key: ke
 
 function summary(rules: Rules): string {
     return [
-        rules.minimum_duration_minutes ? `min ${rules.minimum_duration_minutes} daq` : 'min o‘chiq',
         rules.location_required ? 'joylashuv majburiy' : 'joylashuvsiz',
         rules.accuracy_threshold_meters ? `aniqlik ≤ ${rules.accuracy_threshold_meters} m` : 'aniqlik o‘chiq',
         rules.check_in_enabled ? null : 'kelish o‘chiq',
@@ -115,7 +104,7 @@ export default function Policies({ university, overrides, groups }: { university
                 <Card>
                     <CardHeader
                         title="Universitet siyosati"
-                        description="Guruh uchun alohida siyosat bo‘lmasa, shu qoidalar ishlaydi. Guruh siyosati universitet siyosatini to‘liq almashtiradi."
+                        description="Guruh uchun alohida siyosat bo‘lmasa, shu qoidalar ishlaydi. Guruh siyosati universitet siyosatini to‘liq almashtiradi. Majburiy soat yo‘q: talaba kelgan bo‘lsa «Keldi», ishlagan vaqti alohida ko‘rsatiladi."
                     />
                     <form onSubmit={submit} noValidate className="grid gap-5 px-6 pb-6 md:max-w-2xl">
                         <RulesFields data={form.data} setData={(key, value) => form.setData(key, value as never)} errors={form.errors} />

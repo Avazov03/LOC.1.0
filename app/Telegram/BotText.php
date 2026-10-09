@@ -29,6 +29,8 @@ final class BotText
 
     public const UNKNOWN = 'Quyidagi menyudan kerakli bo‘limni tanlang.';
 
+    public const CHECKOUT_REMINDER = "⏰ Amaliyotni tugatishni unutmang!\n\nBugungi davomatingiz hali ochiq. Amaliyot joyidan ketayotganda «🔴 Amaliyotni tugatish» tugmasini bosing, aks holda kun «Yakunlanmagan» bo‘lib qoladi.";
+
     public const NO_COORDINATES = 'Koordinata yoki xarita havolasi yubormang. Tashkilot joylashuvini universitet administratori belgilaydi.';
 
     public const HELP = <<<'TXT'
@@ -76,6 +78,7 @@ final class BotText
             AttendanceOutcome::LOCATION_MISSING => 'Joylashuv yuborish kerak. «📍 Joylashuvni yuborish» tugmasini bosing.',
             AttendanceOutcome::NO_ASSIGNMENT => self::NO_ACTIVE_ASSIGNMENT,
             AttendanceOutcome::OUTSIDE_PERIOD => 'Amaliyot muddatidan tashqarida davomat qabul qilinmaydi.',
+            AttendanceOutcome::NOT_WORK_DAY => "📅 Bugun sizning amaliyot kuningiz emas.\nAmaliyot kunlaringiz: {$data['days']}.\nBu kun «Kelmadi» deb hisoblanmaydi.",
             AttendanceOutcome::ORGANIZATION_INACTIVE => 'Amaliyot joyingiz hozir faol emas. Rahbaringizga murojaat qiling.',
             AttendanceOutcome::DUPLICATE_OPEN => 'Sizda allaqachon faol davomat mavjud. Ketayotganda «🔴 Amaliyotni tugatish» tugmasini bosing.',
             AttendanceOutcome::SECOND_SESSION_BLOCKED => 'Bugungi davomat allaqachon qayd etilgan. Bir kunda ikkinchi marta boshlashga ruxsat yo‘q.',

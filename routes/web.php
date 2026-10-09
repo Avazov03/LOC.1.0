@@ -10,6 +10,7 @@ use App\Http\Controllers\ChangeRequestController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InternshipController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StudentController;
@@ -65,6 +66,8 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
         Route::get('/supervisors/{supervisor}', [SupervisorController::class, 'show'])->whereNumber('supervisor')->name('supervisors.show');
         Route::put('/supervisors/{supervisor}', [SupervisorController::class, 'update'])->whereNumber('supervisor')->name('supervisors.update');
         Route::patch('/supervisors/{supervisor}/status', [SupervisorController::class, 'status'])->whereNumber('supervisor')->name('supervisors.status');
+        Route::post('/supervisors/{supervisor}/telegram', [SupervisorController::class, 'telegramLink'])->whereNumber('supervisor')->name('supervisors.telegram.link');
+        Route::delete('/supervisors/{supervisor}/telegram', [SupervisorController::class, 'telegramUnlink'])->whereNumber('supervisor')->name('supervisors.telegram.unlink');
 
         Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index');
         Route::get('/organizations/create', [OrganizationController::class, 'create'])->name('organizations.create');
@@ -78,6 +81,7 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
         Route::post('/internships', [InternshipController::class, 'store'])->name('internships.store');
         Route::get('/internships/{internship}', [InternshipController::class, 'show'])->whereNumber('internship')->name('internships.show');
         Route::put('/internships/{internship}', [InternshipController::class, 'update'])->whereNumber('internship')->name('internships.update');
+        Route::put('/internships/{internship}/work-days', [InternshipController::class, 'updateWorkDays'])->whereNumber('internship')->name('internships.work-days');
         Route::post('/internships/{internship}/supervisor', [InternshipController::class, 'replaceSupervisor'])->whereNumber('internship')->name('internships.supervisor');
         Route::post('/internships/{internship}/invites', [InternshipController::class, 'storeInvite'])->whereNumber('internship')->name('invites.store');
         Route::post('/invites/{invite}/close', [InternshipController::class, 'closeInvite'])->whereNumber('invite')->name('invites.close');
@@ -103,6 +107,9 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
     });
 
     Route::middleware('role:SUPERVISOR')->group(function () {
+        Route::post('/profile/telegram', [ProfileController::class, 'telegramLink'])->name('profile.telegram.link');
+        Route::delete('/profile/telegram', [ProfileController::class, 'telegramUnlink'])->name('profile.telegram.unlink');
+        Route::put('/profile/notifications', [ProfileController::class, 'notifications'])->name('profile.notifications');
         Route::get('/my-groups', [SupervisorHomeController::class, 'groups'])->name('supervisor.groups');
         Route::get('/my-groups/{internship}', [SupervisorHomeController::class, 'group'])->whereNumber('internship')->name('supervisor.groups.show');
         Route::get('/my-students', [StudentController::class, 'supervisorIndex'])->name('supervisor.students');
@@ -116,8 +123,14 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
     Route::post('/change-requests/{changeRequest}/approve', [ChangeRequestController::class, 'approve'])->whereNumber('changeRequest')->name('change-requests.approve');
     Route::post('/change-requests/{changeRequest}/reject', [ChangeRequestController::class, 'reject'])->whereNumber('changeRequest')->name('change-requests.reject');
 
+    Route::get('/profile', [ProfileController::class, 'show'])->name('profile');
+    Route::put('/profile/password', [ProfileController::class, 'password'])->middleware('throttle:6,1')->name('profile.password');
+    Route::put('/internships/{internship}/students/{student}/work-days', [InternshipController::class, 'updateStudentWorkDays'])->whereNumber(['internship', 'student'])->name('internships.student-work-days');
+
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::get('/attendance/students/{student}', [AttendanceController::class, 'student'])->whereNumber('student')->name('attendance.student');
+    Route::post('/attendance/students/{student}/marks', [AttendanceController::class, 'storeMark'])->whereNumber('student')->name('attendance.marks.store');
+    Route::post('/attendance/marks/{mark}/revoke', [AttendanceController::class, 'revokeMark'])->whereNumber('mark')->name('attendance.marks.revoke');
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::post('/reports/export', [ReportController::class, 'export'])->middleware('throttle:exports')->name('reports.export');
     Route::get('/reports/exports/{export}/download', [ReportController::class, 'download'])->whereNumber('export')->name('reports.download');

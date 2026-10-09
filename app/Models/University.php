@@ -13,7 +13,7 @@ class University extends Model
     /** @use HasFactory<UniversityFactory> */
     use HasFactory;
 
-    protected $fillable = ['name', 'slug', 'timezone'];
+    protected $fillable = ['name', 'slug', 'timezone', 'reminder_time'];
 
     public function faculties(): HasMany
     {

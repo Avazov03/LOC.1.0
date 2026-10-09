@@ -17,6 +17,8 @@ class DashboardController extends Controller
             'stats' => $user->isAdmin() ? $dashboard->admin($user) : $dashboard->supervisor($user),
             'timezone' => $user->university->timezone,
             'attendance' => $dashboard->attendanceToday($user),
+            'unmarked' => $dashboard->unmarkedToday($user),
+            'reminderTime' => $user->university->reminder_time,
             'today' => $user->university->today(),
         ]);
     }

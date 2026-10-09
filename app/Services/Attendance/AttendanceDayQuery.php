@@ -3,6 +3,7 @@
 namespace App\Services\Attendance;
 
 use App\Models\StudentProfile;
+use App\Support\WorkDays;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
@@ -13,20 +14,23 @@ use Illuminate\Support\Facades\DB;
  * exports and the bot agree and nothing loads thousands of rows into PHP to count them.
  *
  * One row per (student, local date). day_status is null when the student had nothing expected and nothing recorded.
+ * A day is expected only inside an ACTIVE/ENDED assignment and on the student's work days.
  */
 class AttendanceDayQuery
 {
-    public const MAX_RANGE_DAYS = 62;
+    /** A full academic year, so long internships fit in one report. */
+    public const MAX_RANGE_DAYS = 366;
 
     private const STATUS_SQL = <<<'SQL'
         CASE
+            WHEN d.mark_kind = 'PRESENT' THEN 'PRESENT'
             WHEN d.open_count > 0 THEN 'INCOMPLETE'
-            WHEN d.completed_count = 0 AND d.incomplete_count > 0 THEN 'INCOMPLETE'
-            WHEN d.completed_count = 0 AND d.rejected_count > 0 THEN 'LOCATION_REJECTED'
-            WHEN d.completed_count = 0 AND (d.expected = 1 OR d.failed_count > 0) THEN 'ABSENT'
-            WHEN d.completed_count = 0 THEN NULL
-            WHEN d.min_minutes IS NULL OR d.completed_seconds >= d.min_minutes * 60 THEN 'PRESENT'
-            ELSE 'PARTIAL'
+            WHEN d.completed_count > 0 THEN 'PRESENT'
+            WHEN d.mark_kind = 'EXCUSED' THEN 'EXCUSED'
+            WHEN d.incomplete_count > 0 THEN 'INCOMPLETE'
+            WHEN d.rejected_count > 0 THEN 'LOCATION_REJECTED'
+            WHEN d.expected = 1 OR d.failed_count > 0 THEN 'ABSENT'
+            ELSE NULL
         END
         SQL;
 
@@ -45,8 +49,8 @@ class AttendanceDayQuery
         );
         $range = $dates === [] ? ['1970-01-01', '1970-01-01'] : [min($dates), max($dates)];
 
-        // Sessions and events are counted once per (student, day) for the range and joined, instead of
-        // a correlated subquery per row and column: a 30-day report over 1,000 students stays one pass.
+        // Sessions, events and marks are counted once per (student, day) for the range and joined, instead of
+        // a correlated subquery per row and column: a long report over 1,000 students stays one pass.
         $sessions = DB::table('attendance_sessions as s')
             ->whereIn('s.student_profile_id', $scopeIds)
             ->whereBetween('s.local_date', $range)
@@ -65,20 +69,27 @@ class AttendanceDayQuery
             ->select('e.student_profile_id', 'e.local_date')
             ->selectRaw("SUM(CASE WHEN e.verification_status = 'OUTSIDE_RADIUS' THEN 1 ELSE 0 END) AS rejected_count")
             ->selectRaw("SUM(CASE WHEN e.event_type IN ('FAILED_CHECK_IN', 'FAILED_CHECK_OUT') THEN 1 ELSE 0 END) AS failed_count");
+        // At most one active mark per (student, day) (partial unique index), so this join never multiplies rows.
+        $marks = DB::table('attendance_day_marks as m')
+            ->whereIn('m.student_profile_id', (clone $scopeIds))
+            ->whereBetween('m.local_date', $range)
+            ->whereNull('m.revoked_at')
+            ->select('m.student_profile_id', 'm.local_date', 'm.kind', 'm.id', 'm.note');
 
         $base = $base
             ->crossJoinSub($this->days($dates, $timezone), 'days')
             ->leftJoinSub($sessions, 'sa', fn ($join) => $join->on('sa.student_profile_id', '=', 'student_profiles.id')->on('sa.local_date', '=', 'days.d'))
             ->leftJoinSub($events, 'ea', fn ($join) => $join->on('ea.student_profile_id', '=', 'student_profiles.id')->on('ea.local_date', '=', 'days.d'))
-            // One ACTIVE policy per scope (partial unique index), so these joins never multiply rows.
-            ->leftJoin('attendance_policies as gp', fn ($join) => $join->where('gp.scope_type', 'GROUP')->on('gp.scope_id', '=', 'student_profiles.current_group_id')->where('gp.status', 'ACTIVE'))
-            ->leftJoin('attendance_policies as up', fn ($join) => $join->where('up.scope_type', 'UNIVERSITY')->on('up.scope_id', '=', 'student_profiles.university_id')->where('up.status', 'ACTIVE'))
+            ->leftJoinSub($marks, 'mk', fn ($join) => $join->on('mk.student_profile_id', '=', 'student_profiles.id')->on('mk.local_date', '=', 'days.d'))
             ->select([
                 'student_profiles.id as student_profile_id',
                 'student_profiles.last_name',
                 'student_profiles.first_name',
                 'student_profiles.current_group_id',
                 'days.d as local_date',
+                'mk.kind as mark_kind',
+                'mk.id as mark_id',
+                'mk.note as mark_note',
             ])
             ->selectRaw($this->aggregatesSql());
 
@@ -104,7 +115,7 @@ class AttendanceDayQuery
             ->pluck('total', 'day_status');
 
         $totals = [];
-        foreach (['PRESENT', 'PARTIAL', 'INCOMPLETE', 'LOCATION_REJECTED', 'ABSENT'] as $status) {
+        foreach (['PRESENT', 'INCOMPLETE', 'LOCATION_REJECTED', 'EXCUSED', 'ABSENT'] as $status) {
             $totals[$status] = (int) ($counts[$status] ?? 0);
         }
         $totals['EXPECTED'] = array_sum($totals);
@@ -126,7 +137,8 @@ class AttendanceDayQuery
             ->havingRaw('SUM(CASE WHEN r.day_status IS NOT NULL THEN 1 ELSE 0 END) > 0')
             ->select('r.student_profile_id', 'r.last_name', 'r.first_name', 'r.current_group_id')
             ->selectRaw("SUM(CASE WHEN r.day_status = 'PRESENT' THEN 1 ELSE 0 END) AS present_days")
-            ->selectRaw("SUM(CASE WHEN r.day_status = 'PARTIAL' THEN 1 ELSE 0 END) AS partial_days")
+            ->selectRaw("SUM(CASE WHEN r.mark_kind = 'PRESENT' THEN 1 ELSE 0 END) AS marked_days")
+            ->selectRaw("SUM(CASE WHEN r.day_status = 'EXCUSED' THEN 1 ELSE 0 END) AS excused_days")
             ->selectRaw("SUM(CASE WHEN r.day_status = 'INCOMPLETE' THEN 1 ELSE 0 END) AS incomplete_days")
             ->selectRaw("SUM(CASE WHEN r.day_status = 'LOCATION_REJECTED' THEN 1 ELSE 0 END) AS rejected_days")
             ->selectRaw("SUM(CASE WHEN r.day_status = 'ABSENT' THEN 1 ELSE 0 END) AS absent_days")
@@ -159,27 +171,55 @@ class AttendanceDayQuery
     }
 
     /**
+     * One row per local date: d, its UTC bounds ds/de, and wbit, the date's weekday bit in a work-days mask.
+     *
      * @param  list<string>  $dates
      */
     private function days(array $dates, string $timezone): Builder
     {
-        $pgsql = DB::getDriverName() === 'pgsql';
-        $select = $pgsql
-            ? 'CAST(? AS date) AS d, CAST(? AS timestamptz) AS ds, CAST(? AS timestamptz) AS de'
-            : '? AS d, ? AS ds, ? AS de';
+        $dates = array_values(array_unique($dates));
+        sort($dates);
+
+        if (DB::getDriverName() === 'pgsql' && count($dates) > 1 && $this->contiguous($dates)) {
+            // A generated series keeps a year-long report one small statement instead of a 366-way UNION.
+            return DB::query()
+                ->fromRaw("generate_series(CAST(? AS date), CAST(? AS date), interval '1 day') AS g(day)", [$dates[0], $dates[count($dates) - 1]])
+                ->selectRaw(
+                    'CAST(g.day AS date) AS d, '
+                    .'(CAST(g.day AS date)::timestamp AT TIME ZONE ?) AS ds, '
+                    ."((CAST(g.day AS date) + 1)::timestamp AT TIME ZONE ? - interval '1 second') AS de, "
+                    .'(1 << (EXTRACT(ISODOW FROM g.day)::int - 1)) AS wbit',
+                    [$timezone, $timezone],
+                );
+        }
+
+        $select = DB::getDriverName() === 'pgsql'
+            ? 'CAST(? AS date) AS d, CAST(? AS timestamptz) AS ds, CAST(? AS timestamptz) AS de, CAST(? AS integer) AS wbit'
+            : '? AS d, ? AS ds, ? AS de, ? AS wbit';
 
         $union = null;
-        foreach (array_values(array_unique($dates)) as $date) {
+        foreach ($dates as $date) {
             $local = CarbonImmutable::parse($date, $timezone);
             $query = DB::query()->selectRaw($select, [
                 $date,
                 $local->startOfDay()->utc()->format('Y-m-d H:i:s'),
                 $local->endOfDay()->utc()->format('Y-m-d H:i:s'),
+                WorkDays::bit($local->dayOfWeekIso),
             ]);
             $union = $union === null ? $query : $union->unionAll($query);
         }
 
-        return $union ?? DB::query()->selectRaw($select, ['1970-01-01', '1970-01-01 00:00:00', '1970-01-01 00:00:00'])->whereRaw('1 = 0');
+        return $union ?? DB::query()->selectRaw($select, ['1970-01-01', '1970-01-01 00:00:00', '1970-01-01 00:00:00', 0])->whereRaw('1 = 0');
+    }
+
+    /**
+     * @param  list<string>  $sorted
+     */
+    private function contiguous(array $sorted): bool
+    {
+        $first = CarbonImmutable::parse($sorted[0]);
+
+        return $first->addDays(count($sorted) - 1)->toDateString() === $sorted[count($sorted) - 1];
     }
 
     private function aggregatesSql(): string
@@ -193,9 +233,15 @@ class AttendanceDayQuery
             'sa.last_check_out',
             'COALESCE(ea.rejected_count, 0) AS rejected_count',
             'COALESCE(ea.failed_count, 0) AS failed_count',
-            "CASE WHEN EXISTS (SELECT 1 FROM internship_assignments a WHERE a.student_profile_id = student_profiles.id AND a.status IN ('ACTIVE', 'ENDED') AND a.start_at <= days.de AND COALESCE(a.ended_at, a.end_at) >= days.ds) THEN 1 ELSE 0 END AS expected",
-            // A32: the GROUP row replaces the UNIVERSITY row as a whole, including a null (OFF) minimum.
-            'CASE WHEN gp.id IS NOT NULL THEN gp.minimum_duration_minutes ELSE up.minimum_duration_minutes END AS min_minutes',
+            // Expected: an assignment in force that day, and the day is one of the student's work days
+            // (the per-student override, else the internship's days).
+            'CASE WHEN EXISTS (SELECT 1 FROM internship_assignments a'
+            .' JOIN internships i ON i.id = a.internship_id'
+            .' LEFT JOIN internship_participants p ON p.internship_id = a.internship_id AND p.student_profile_id = a.student_profile_id'
+            ." WHERE a.student_profile_id = student_profiles.id AND a.status IN ('ACTIVE', 'ENDED')"
+            .' AND a.start_at <= days.de AND COALESCE(a.ended_at, a.end_at) >= days.ds'
+            .' AND (COALESCE(p.work_days, i.work_days) & days.wbit) <> 0'
+            .') THEN 1 ELSE 0 END AS expected',
         ]);
     }
 }

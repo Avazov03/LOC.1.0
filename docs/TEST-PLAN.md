@@ -30,7 +30,10 @@ Latest run: `composer test:pgsql` 285 tests, 1957 assertions, OK. `php artisan t
 | Distance 101 m, radius 100 m | fail |
 | Radius 99 and 501 | rejected by validation and by the check constraint |
 | Minimum duration off | day status PRESENT when a completed session exists (D4) |
-| Minimum 4 h, actual 2 h completed | PARTIAL, not ABSENT |
+| Any completed session, even 2 h (old 4 h minimum set) | PRESENT, duration shown |
+| Non-work day (odd/even/custom mask, student override) | Check-in refused, day not ABSENT |
+| Supervisor "Keldi" / "Sababli" mark, revoke | PRESENT / EXCUSED, audited; 7-day window, no future |
+| Telegram digest button after reminder time | Day marked PRESENT once; stale or foreign list refused |
 | No verified check-in | ABSENT |
 | No verified check-in, radius rejection exists | LOCATION_REJECTED |
 | Open session | day display INCOMPLETE |

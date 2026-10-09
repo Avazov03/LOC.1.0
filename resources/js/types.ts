@@ -20,6 +20,7 @@ export type SharedProps = {
         success?: string | null;
         error?: string | null;
         invite_link?: string | null;
+        telegram_link?: string | null;
         assignment_results?: AssignmentResult[] | null;
     };
     appName: string;
@@ -38,6 +39,8 @@ export type Participant = {
     student_code: string | null;
     status: string;
     joined_at: string | null;
+    work_days: number[] | null;
+    work_days_label: string | null;
     assignment: { id: number; organization: string | null; status: string; start_at: string | null; end_at: string | null } | null;
 };
 
@@ -136,6 +139,8 @@ export type InternshipSummary = {
     year: string;
     period_start: string;
     period_end: string;
+    work_days: number[];
+    work_days_label: string;
 };
 
 export type Paginated<T> = {
@@ -150,7 +155,9 @@ export type Paginated<T> = {
     next_page_url: string | null;
 };
 
-export type DayStatus = 'PRESENT' | 'PARTIAL' | 'INCOMPLETE' | 'LOCATION_REJECTED' | 'ABSENT';
+export type DayStatus = 'PRESENT' | 'INCOMPLETE' | 'LOCATION_REJECTED' | 'EXCUSED' | 'ABSENT';
+
+export type DayMark = { id: number; kind: 'PRESENT' | 'EXCUSED'; note: string | null };
 
 export type AttendanceFilterValues = {
     search: string | null;

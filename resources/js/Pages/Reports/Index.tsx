@@ -12,14 +12,15 @@ type Row = {
     group: string | null;
     organization: string | null;
     present: number;
-    partial: number;
+    marked: number;
+    excused: number;
     incomplete: number;
     rejected: number;
     absent: number;
     failed: number;
     seconds: number;
 };
-type Totals = { students: number; present: number; partial: number; incomplete: number; rejected: number; absent: number; failed: number; seconds: number };
+type Totals = { students: number; present: number; marked: number; excused: number; incomplete: number; rejected: number; absent: number; failed: number; seconds: number };
 type Export = { id: number; status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED'; type: string; from: string | null; to: string | null; rows: number | null; created_at: string };
 
 const exportTone = { PENDING: 'warning', RUNNING: 'info', DONE: 'success', FAILED: 'danger' } as const;
@@ -62,17 +63,18 @@ export default function Reports({
     const tiles: Array<[string, number | string]> = [
         ['Talabalar', totals.students],
         ['Keldi (kun)', totals.present],
-        ['Qisman', totals.partial],
+        ['shundan rahbar belgilagan', totals.marked],
+        ['Sababli', totals.excused],
         ['Yakunlanmagan', totals.incomplete],
         ['Joylashuv rad etildi', totals.rejected],
         ['Kelmadi', totals.absent],
         ['Rad etilgan urinish', totals.failed],
-        ['Jami soat', Math.round(totals.seconds / 360) / 10],
+        ['Jami vaqt', duration(totals.seconds)],
     ];
 
     return (
         <AppLayout title="Hisobotlar">
-            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-8">
+            <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
                 {tiles.map(([label, value]) => (
                     <Card key={label} className="p-4">
                         <p className="text-xs text-muted">{label}</p>
@@ -84,7 +86,7 @@ export default function Reports({
             <Card>
                 <CardHeader
                     title={`Davomat hisoboti · ${filters.from} — ${filters.to}`}
-                    description={`${auth.user?.role === 'ADMIN' ? 'Universitet' : 'Sizning talabalaringiz'} bo‘yicha. Oraliq ko‘pi bilan ${maxDays} kun.`}
+                    description={`${auth.user?.role === 'ADMIN' ? 'Universitet' : 'Sizning talabalaringiz'} bo‘yicha. Faqat amaliyot kunlari hisoblanadi; oraliq ko‘pi bilan ${maxDays} kun.`}
                     action={
                         <div className="flex flex-wrap gap-2">
                             <Button variant="tonal" icon="download" onClick={() => exportCsv('summary')}>CSV (jamlanma)</Button>
@@ -93,7 +95,7 @@ export default function Reports({
                     }
                 />
                 <AttendanceFilterBar url="/reports" filters={filters} options={options} statuses={[]} range max={today} />
-                <Table head={['Talaba', 'Guruh', 'Tashkilot', 'Keldi', 'Qisman', 'Yakunl.', 'Rad etildi', 'Kelmadi', 'Urinish', 'Jami']}>
+                <Table head={['Talaba', 'Guruh', 'Tashkilot', 'Keldi', 'Sababli', 'Yakunl.', 'Rad etildi', 'Kelmadi', 'Urinish', 'Jami vaqt']}>
                     {rows.data.length === 0 ? (
                         <EmptyRow colSpan={10}>Bu oraliq va filtr bo‘yicha ma’lumot yo‘q.</EmptyRow>
                     ) : (
@@ -106,8 +108,11 @@ export default function Reports({
                                 </Td>
                                 <Td>{row.group ?? '—'}</Td>
                                 <Td>{row.organization ?? '—'}</Td>
-                                <Td className="tabular-nums">{row.present}</Td>
-                                <Td className="tabular-nums">{row.partial}</Td>
+                                <Td className="tabular-nums">
+                                    {row.present}
+                                    {row.marked > 0 ? <span className="block text-xs text-muted">{row.marked} tasi rahbar belgilagan</span> : null}
+                                </Td>
+                                <Td className="tabular-nums">{row.excused}</Td>
                                 <Td className="tabular-nums">{row.incomplete}</Td>
                                 <Td className="tabular-nums">{row.rejected}</Td>
                                 <Td className="tabular-nums">{row.absent}</Td>

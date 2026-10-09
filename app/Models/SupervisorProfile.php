@@ -8,7 +8,19 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SupervisorProfile extends Model
 {
-    protected $fillable = ['user_id', 'university_id', 'phone', 'position'];
+    protected $fillable = ['user_id', 'university_id', 'phone', 'position', 'notify_check_events'];
+
+    protected $hidden = ['telegram_link_hash'];
+
+    protected function casts(): array
+    {
+        return [
+            'telegram_user_id' => 'integer',
+            'telegram_linked_at' => 'datetime',
+            'telegram_link_expires_at' => 'datetime',
+            'notify_check_events' => 'boolean',
+        ];
+    }
 
     public function user(): BelongsTo
     {

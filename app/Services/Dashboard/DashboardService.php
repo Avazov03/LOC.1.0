@@ -13,6 +13,7 @@ use App\Models\StudentGroup;
 use App\Models\User;
 use App\Services\Access\AccessScope;
 use App\Services\Attendance\AttendanceDayQuery;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Dashboard counters (§50, §53). Every count goes through AccessScope, so a supervisor only counts
@@ -75,6 +76,27 @@ class DashboardService
     public function attendanceToday(User $actor): array
     {
         return $this->days->totals($this->scope->students($actor), $actor->university->today(), $actor->university->timezone);
+    }
+
+    /**
+     * Students expected today with nothing accepted and no staff mark yet, for the "Bugun belgilanmaganlar" block.
+     *
+     * @return array{total: int, rows: list<array{student_id: int, name: string, status: string}>}
+     */
+    public function unmarkedToday(User $actor, int $limit = 15): array
+    {
+        $university = $actor->university;
+        $query = DB::query()
+            ->fromSub($this->days->rows($this->scope->students($actor)->where('student_profiles.status', 'ACTIVE'), [$university->today()], $university->timezone), 'x')
+            ->where('x.expected', 1)
+            ->whereIn('x.day_status', ['ABSENT', 'LOCATION_REJECTED']);
+
+        return [
+            'total' => (clone $query)->count(),
+            'rows' => $query->orderBy('x.last_name')->orderBy('x.first_name')->limit($limit)->get()
+                ->map(fn ($row) => ['student_id' => (int) $row->student_profile_id, 'name' => trim($row->last_name.' '.$row->first_name), 'status' => (string) $row->day_status])
+                ->all(),
+        ];
     }
 
     /**

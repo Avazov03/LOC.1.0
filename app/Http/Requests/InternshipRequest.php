@@ -21,6 +21,8 @@ class InternshipRequest extends FormRequest
             'supervisor_profile_id' => ['required', 'integer'],
             'period_start' => ['required', 'date_format:Y-m-d'],
             'period_end' => ['required', 'date_format:Y-m-d', 'after_or_equal:period_start'],
+            'work_days' => ['sometimes', 'array', 'min:1', 'max:7'],
+            'work_days.*' => ['integer', 'between:1,7', 'distinct'],
         ];
     }
 }

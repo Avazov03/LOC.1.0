@@ -10,6 +10,7 @@ use App\Services\Internships\InternshipService;
 use App\Services\Organizations\OrganizationService;
 use App\Services\Students\StudentService;
 use App\Support\Present;
+use App\Support\WorkDays;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -63,6 +64,8 @@ class SupervisorHomeController extends Controller
                 'year' => $model->academicYear->name,
                 'period_start' => $model->period_start->toDateString(),
                 'period_end' => $model->period_end->toDateString(),
+                'work_days' => WorkDays::toDays($model->work_days),
+                'work_days_label' => WorkDays::label($model->work_days),
             ],
             'participants' => $internships->participants($model)->map(fn ($participant) => Present::participant($participant, $timezone)),
             'organizations' => $organizations->activeOptions($user)->values(),

@@ -1,23 +1,157 @@
-import { router } from '@inertiajs/react';
+import { router, useForm } from '@inertiajs/react';
 import { FormEvent, useState } from 'react';
-import { Badge, Button, Input, Select, type Tone } from '@/Components/ui';
-import type { AttendanceFilterOptions, AttendanceFilterValues, DayStatus, Option, StatusOption } from '@/types';
+import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
+import { Badge, Button, Field, Input, Select, Textarea, type Tone } from '@/Components/ui';
+import type { AttendanceFilterOptions, AttendanceFilterValues, DayMark, DayStatus, Option, StatusOption } from '@/types';
 
 const dayStatus: Record<DayStatus, [Tone, string]> = {
     PRESENT: ['success', 'Keldi'],
-    PARTIAL: ['info', 'Qisman'],
     INCOMPLETE: ['warning', 'Yakunlanmagan'],
     LOCATION_REJECTED: ['danger', 'Joylashuv rad etildi'],
+    EXCUSED: ['info', 'Sababli'],
     ABSENT: ['secondary', 'Kelmadi'],
 };
 
-export function DayStatusBadge({ status }: { status: string | null }) {
+/**
+ * Day status with the worked time next to "Keldi" (no minimum duration) and who decided it, if a supervisor marked it.
+ */
+export function DayStatusBadge({ status, seconds, mark }: { status: string | null; seconds?: number; mark?: DayMark | null }) {
     if (!status) {
         return <span className="text-muted">—</span>;
     }
     const [tone, label] = dayStatus[status as DayStatus] ?? ['secondary', status];
+    const time = status === 'PRESENT' && seconds ? ` · ${duration(seconds)}` : '';
 
-    return <Badge tone={tone}>{label}</Badge>;
+    return (
+        <span className="inline-flex flex-col items-start gap-1">
+            <Badge tone={tone}>{label + time}</Badge>
+            {mark ? (
+                <span className="max-w-[14rem] text-xs text-muted" title={mark.note ?? undefined}>
+                    Rahbar belgiladi{mark.note ? `: ${mark.note}` : ''}
+                </span>
+            ) : null}
+        </span>
+    );
+}
+
+/**
+ * "✅ Keldi" in one click, "Sababli" with a required reason, or revoking the existing mark.
+ * The server re-checks scope and the date window; canMark only hides buttons that would be refused.
+ */
+export function DayMarkControls({ studentId, date, status, mark, canMark }: { studentId: number; date: string; status: string | null; mark: DayMark | null; canMark: boolean }) {
+    const [excusing, setExcusing] = useState(false);
+    const form = useForm({ date, kind: 'EXCUSED', note: '' });
+
+    if (!canMark) {
+        return null;
+    }
+
+    if (mark) {
+        return (
+            <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => window.confirm('Belgini bekor qilasizmi? Kun holati qayta hisoblanadi.') && router.post(`/attendance/marks/${mark.id}/revoke`, {}, { preserveScroll: true })}
+            >
+                Belgini bekor qilish
+            </Button>
+        );
+    }
+
+    if (status === 'PRESENT' || status === 'INCOMPLETE') {
+        return null;
+    }
+
+    function excuse(event: FormEvent) {
+        event.preventDefault();
+        form.transform((data) => ({ ...data, date }));
+        form.post(`/attendance/students/${studentId}/marks`, { preserveScroll: true, onSuccess: () => { setExcusing(false); form.reset(); } });
+    }
+
+    return (
+        <span className="inline-flex flex-wrap justify-end gap-2">
+            <Button size="sm" icon="check" onClick={() => router.post(`/attendance/students/${studentId}/marks`, { date, kind: 'PRESENT' }, { preserveScroll: true })}>
+                Keldi
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setExcusing(true)}>
+                Sababli
+            </Button>
+            <Modal title={`Sababli · ${date}`} open={excusing} onClose={() => setExcusing(false)}>
+                <form onSubmit={excuse} noValidate>
+                    <ModalBody>
+                        <Field label="Sabab" htmlFor={`note-${studentId}-${date}`} error={form.errors.note}>
+                            <Textarea
+                                id={`note-${studentId}-${date}`}
+                                value={form.data.note}
+                                onChange={(event) => form.setData('note', event.target.value)}
+                                placeholder="Masalan: kasal, ma’lumotnoma bor"
+                            />
+                        </Field>
+                        <p className="text-sm text-muted">Sababli kun «Kelmadi» hisoblanmaydi. Belgi audit jurnaliga yoziladi va keyin bekor qilinishi mumkin.</p>
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button variant="secondary" onClick={() => setExcusing(false)}>
+                            Bekor
+                        </Button>
+                        <Button type="submit" disabled={form.processing}>
+                            Saqlash
+                        </Button>
+                    </ModalFooter>
+                </form>
+            </Modal>
+        </span>
+    );
+}
+
+export const WEEKDAYS: Array<{ day: number; label: string }> = [
+    { day: 1, label: 'Du' },
+    { day: 2, label: 'Se' },
+    { day: 3, label: 'Chor' },
+    { day: 4, label: 'Pay' },
+    { day: 5, label: 'Ju' },
+    { day: 6, label: 'Sha' },
+    { day: 7, label: 'Yak' },
+];
+
+const PRESETS: Array<{ label: string; days: number[] }> = [
+    { label: 'Har kuni', days: [1, 2, 3, 4, 5, 6, 7] },
+    { label: 'Du–Sha', days: [1, 2, 3, 4, 5, 6] },
+    { label: 'Du–Ju', days: [1, 2, 3, 4, 5] },
+    { label: 'Toq kunlar', days: [1, 3, 5] },
+    { label: 'Juft kunlar', days: [2, 4, 6] },
+];
+
+/**
+ * Weekday picker with presets: every day, Mon–Sat, Mon–Fri, odd (Mon/Wed/Fri), even (Tue/Thu/Sat), or any custom set.
+ */
+export function WorkDaysPicker({ value, onChange, error }: { value: number[]; onChange: (days: number[]) => void; error?: string }) {
+    const same = (days: number[]) => days.length === value.length && days.every((day) => value.includes(day));
+
+    return (
+        <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+                {PRESETS.map((preset) => (
+                    <Button key={preset.label} size="sm" variant={same(preset.days) ? 'primary' : 'secondary'} onClick={() => onChange(preset.days)}>
+                        {preset.label}
+                    </Button>
+                ))}
+            </div>
+            <div className="flex flex-wrap gap-3" role="group" aria-label="Hafta kunlari">
+                {WEEKDAYS.map(({ day, label }) => (
+                    <label key={day} className="inline-flex items-center gap-1.5 text-sm text-heading">
+                        <input
+                            type="checkbox"
+                            className="size-4 accent-primary-500"
+                            checked={value.includes(day)}
+                            onChange={() => onChange(value.includes(day) ? value.filter((d) => d !== day) : [...value, day].sort((a, b) => a - b))}
+                        />
+                        {label}
+                    </label>
+                ))}
+            </div>
+            {error ? <p className="text-sm text-danger">{error}</p> : null}
+        </div>
+    );
 }
 
 export function duration(seconds: number): string {

@@ -3,6 +3,7 @@
 use App\Services\Admin\BootstrapAdminService;
 use App\Services\Assignments\InternshipAssignmentService;
 use App\Services\Attendance\AttendanceService;
+use App\Services\Attendance\DailyReminderService;
 use App\Services\Internships\InviteService;
 use App\Telegram\ConversationStore;
 use App\Telegram\TelegramApiException;
@@ -25,6 +26,11 @@ Artisan::command('assignments:activate-due', function (InternshipAssignmentServi
 Artisan::command('attendance:close-stale', function (AttendanceService $attendance) {
     $this->info($attendance->closeStaleSessions().' ta ochiq sessiya INCOMPLETE qilindi.');
 })->purpose('A30: mark OPEN sessions from an earlier local date as INCOMPLETE');
+
+Artisan::command('attendance:daily-reminders', function (DailyReminderService $reminders) {
+    $result = $reminders->run();
+    $this->info("{$result['reminders']} ta talabaga eslatma, {$result['digests']} ta rahbarga kunlik ro‘yxat.");
+})->purpose('After the university reminder time: check-out reminders to students, unmarked-student digests to supervisors');
 
 Artisan::command('telegram:prune', function (ConversationStore $conversations) {
     $updates = DB::table('telegram_processed_updates')->where('processed_at', '<', now()->subDays(14))->delete();
@@ -123,5 +129,6 @@ Artisan::command('telegram:poll {--once : Process one batch and exit}', function
 Schedule::command('invites:expire')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('assignments:activate-due')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('attendance:close-stale')->everyFifteenMinutes()->withoutOverlapping();
+Schedule::command('attendance:daily-reminders')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('telegram:prune')->dailyAt('03:30')->withoutOverlapping();
 Schedule::command('queue:prune-failed --hours=720')->daily();

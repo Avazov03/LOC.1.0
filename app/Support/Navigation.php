@@ -35,6 +35,7 @@ class Navigation
                 ['header' => 'Nazorat'],
                 ['label' => 'Audit jurnali', 'href' => '/audit-logs', 'icon' => 'shield'],
                 ['label' => 'Sozlamalar', 'href' => '/settings', 'icon' => 'settings'],
+                ['label' => 'Profil', 'href' => '/profile', 'icon' => 'user'],
             ];
         }
 
@@ -47,6 +48,8 @@ class Navigation
                 ['label' => 'Davomat', 'href' => '/attendance', 'icon' => 'clock'],
                 ['label' => 'Hisobotlar', 'href' => '/reports', 'icon' => 'chart'],
                 ['label' => 'O‘zgartirish so‘rovlari', 'href' => '/change-requests', 'icon' => 'swap'],
+                ['header' => 'Hisob'],
+                ['label' => 'Profil va Telegram', 'href' => '/profile', 'icon' => 'settings'],
             ];
         }
 

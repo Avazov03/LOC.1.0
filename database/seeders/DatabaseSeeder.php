@@ -125,7 +125,7 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Phase 4 demo: policies plus a week of attendance written through AttendanceService with a moved clock,
-     * so every row obeys the same rules as a real check-in. Covers PRESENT, PARTIAL, INCOMPLETE,
+     * so every row obeys the same rules as a real check-in. Covers PRESENT (short and full days), INCOMPLETE,
      * LOCATION_REJECTED, ABSENT, a failed attempt before success, an open session today and a manual correction.
      *
      * @param  array{law: Collection<int, StudentProfile>, finance: Collection<int, StudentProfile>, organizations: Collection<int, Organization>}  $students
@@ -134,8 +134,8 @@ class DatabaseSeeder extends Seeder
     {
         $policies = app(AttendancePolicyService::class);
         $policies->saveUniversity($admin, AttendancePolicy::DEFAULTS);
-        // Finance group: 4-hour minimum, so a short day is PARTIAL.
-        $policies->saveGroup($admin, $group201->id, [...AttendancePolicy::DEFAULTS, 'minimum_duration_minutes' => 240, 'accuracy_threshold_meters' => 100]);
+        // Finance group: own policy with an accuracy threshold.
+        $policies->saveGroup($admin, $group201->id, [...AttendancePolicy::DEFAULTS, 'accuracy_threshold_meters' => 100]);
 
         $attendance = app(AttendanceService::class);
         $tz = $university->timezone;
@@ -196,7 +196,7 @@ class DatabaseSeeder extends Seeder
                 $attendance->checkOut($nodira, $inside($orgs[1]));
             }
 
-            // Otabek: full days, except short (PARTIAL under the 4-hour group minimum) every other day.
+            // Otabek: full days, except a short day every other day (still PRESENT, shorter duration).
             $at($date, '09:00');
             $attendance->checkIn($otabek, $inside($orgs[3]));
             $at($date, $offset % 2 === 0 ? '11:00' : '14:30');

@@ -5,13 +5,18 @@ namespace App\Telegram;
 use App\Enums\ActiveStatus;
 use App\Enums\ChangeRequestStatus;
 use App\Enums\ChangeRequestType;
+use App\Enums\DayMarkKind;
+use App\Enums\DayStatus;
 use App\Enums\EventSource;
 use App\Exceptions\BusinessRuleException;
 use App\Models\InternshipChangeRequest;
 use App\Models\Organization;
 use App\Models\StudentProfile;
+use App\Models\SupervisorNotification;
+use App\Models\SupervisorProfile;
 use App\Models\TelegramConversation;
 use App\Services\Attendance\AttendanceDayQuery;
+use App\Services\Attendance\AttendanceMarkService;
 use App\Services\Attendance\AttendanceOutcome;
 use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\LocationInput;
@@ -21,7 +26,10 @@ use App\Services\Onboarding\OnboardingException;
 use App\Services\Onboarding\StudentOnboardingService;
 use App\Services\Students\StudentAccessException;
 use App\Services\Students\StudentContextService;
+use App\Services\Supervisors\SupervisorTelegramService;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 
@@ -74,6 +82,8 @@ class BotHandler
         private readonly AttendanceDayQuery $days,
         private readonly InternshipChangeRequestService $changes,
         private readonly ConversationStore $conversations,
+        private readonly SupervisorTelegramService $supervisorTelegram,
+        private readonly AttendanceMarkService $marks,
     ) {}
 
     /**
@@ -91,6 +101,14 @@ class BotHandler
         }
 
         $conversation = $this->conversations->get($update->userId);
+
+        // A linked supervisor who is not also a student only receives notifications; anything typed gets the help text.
+        $joining = $conversation !== null && str_starts_with($conversation->state, 'JOIN_');
+        if (! $joining && ! $this->isRegistered($update->userId) && ($supervisor = $this->supervisorTelegram->linkedProfile($update->userId)) !== null) {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, $this->supervisorHelp($supervisor), Keyboard::remove())];
+        }
         $action = Keyboard::action($text);
 
         if ($action === 'cancel') {
@@ -135,6 +153,10 @@ class BotHandler
      */
     private function start(Update $update, string $token): array
     {
+        if (str_starts_with($token, SupervisorTelegramService::PREFIX)) {
+            return $this->linkSupervisor($update, substr($token, strlen(SupervisorTelegramService::PREFIX)));
+        }
+
         $existing = StudentProfile::query()->where('telegram_user_id', $update->userId)->first();
         if ($existing !== null) {
             // Repeated /start, with or without a token, never creates a second student.
@@ -147,7 +169,9 @@ class BotHandler
         }
 
         if ($token === '') {
-            return [$this->reply($update, BotText::NEED_INVITE, Keyboard::remove())];
+            $supervisor = $this->supervisorTelegram->linkedProfile($update->userId);
+
+            return [$this->reply($update, $supervisor ? $this->supervisorHelp($supervisor) : BotText::NEED_INVITE, Keyboard::remove())];
         }
 
         $key = 'tg-join:'.$update->userId;
@@ -177,6 +201,45 @@ class BotHandler
             '',
             'Ismingizni yozing:',
         ]), Keyboard::reply([[Keyboard::CANCEL]]))];
+    }
+
+    /**
+     * @return list<Reply>
+     */
+    private function linkSupervisor(Update $update, string $token): array
+    {
+        $key = 'tg-join:'.$update->userId;
+        if (RateLimiter::tooManyAttempts($key, self::JOIN_PER_MINUTE)) {
+            return [$this->reply($update, BotText::RATE_LIMITED)];
+        }
+        RateLimiter::hit($key, 60);
+
+        $profile = $this->supervisorTelegram->link($token, $update->userId);
+        if ($profile === null) {
+            return [$this->reply($update, 'Havola noto‘g‘ri yoki muddati tugagan. Saytdagi «Profil» sahifasida yangi havola oling.')];
+        }
+        $this->conversations->clear($update->userId);
+        $student = $this->activeStudent($update->userId);
+
+        return [$this->reply($update, BotText::lines([
+            '✅ Telegram hisobingiz rahbar profiliga ulandi: '.$profile->user->name.'.',
+            '',
+            $this->supervisorHelp($profile),
+        ]), $student ? Keyboard::menu() : Keyboard::remove())];
+    }
+
+    private function supervisorHelp(SupervisorProfile $supervisor): string
+    {
+        $supervisor->loadMissing('university:id,reminder_time');
+
+        return BotText::lines([
+            '👨‍🏫 Siz amaliyot rahbari sifatida ulangansiz.',
+            '',
+            $supervisor->notify_check_events ? '• Talabalaringiz kelgan va ketgan vaqti shu yerga keladi.' : null,
+            '• Har kuni soat '.($supervisor->university?->reminder_time ?? '18:00').' da davomati belgilanmagan talabalar ro‘yxati keladi. «✅» tugmasi talabani «Keldi» deb belgilaydi.',
+            '',
+            'Batafsil ma’lumot va sozlamalar saytdagi «Davomat» va «Profil» sahifalarida.',
+        ]);
     }
 
     /**
@@ -341,6 +404,7 @@ class BotHandler
             '🏢 '.$assignment['organization'],
             $assignment['address'] ? '📍 Manzil: '.$assignment['address'] : null,
             '📅 Muddat: '.$assignment['start_at'].' — '.$assignment['end_at'],
+            '🗓 Amaliyot kunlari: '.$assignment['work_days'],
             $assignment['supervisor'] ? '👨‍🏫 Rahbar: '.$assignment['supervisor'] : null,
             'Holat: '.($assignment['status'] === 'ACTIVE' ? 'faol' : 'boshlanishi kutilmoqda'),
         ]), Keyboard::menu());
@@ -379,12 +443,14 @@ class BotHandler
             return $this->reply($update, '📅 So‘nggi '.self::HISTORY_DAYS.' kunda davomat yozuvi yo‘q.', Keyboard::menu());
         }
 
-        $icons = ['PRESENT' => '✅', 'PARTIAL' => '🟡', 'INCOMPLETE' => '⏳', 'LOCATION_REJECTED' => '📍', 'ABSENT' => '❌'];
-        $labels = ['PRESENT' => 'Keldi', 'PARTIAL' => 'Qisman', 'INCOMPLETE' => 'Yakunlanmagan', 'LOCATION_REJECTED' => 'Joylashuv rad etildi', 'ABSENT' => 'Kelmadi'];
         $lines = ['📅 Davomatim (so‘nggi '.self::HISTORY_DAYS.' kun)', ''];
         foreach ($rows as $row) {
+            $status = DayStatus::from($row->day_status);
             $date = CarbonImmutable::parse((string) $row->local_date)->format('d.m');
-            $line = "{$date} — {$icons[$row->day_status]} {$labels[$row->day_status]}";
+            $line = "{$date} — {$status->icon()} {$status->label()}";
+            if ($row->mark_kind !== null) {
+                $line .= ' (rahbar belgiladi)';
+            }
             if ($row->first_check_in !== null) {
                 $in = CarbonImmutable::parse($row->first_check_in, 'UTC')->setTimezone($tz)->format('H:i');
                 $out = $row->last_check_out !== null ? CarbonImmutable::parse($row->last_check_out, 'UTC')->setTimezone($tz)->format('H:i') : '—';
@@ -655,6 +721,10 @@ class BotHandler
      */
     private function callback(Update $update): array
     {
+        if (preg_match('/^dg:(\d{1,12}):(\d{1,2}|all)$/', (string) $update->callbackData, $match)) {
+            return [$this->digestMark($update, (int) $match[1], $match[2])];
+        }
+
         $student = $this->activeStudent($update->userId);
         if ($student === null) {
             return [$this->reply($update, BotText::ACCESS_DENIED, Keyboard::remove())];
@@ -688,6 +758,45 @@ class BotHandler
         }
 
         return [$this->reply($update, BotText::UNKNOWN, Keyboard::menu())];
+    }
+
+    /**
+     * "✅" under a supervisor digest: marks the listed student (or all of them) PRESENT for the digest date.
+     * The same AttendanceMarkService checks apply as on the web: scope, date window, assignment on that day.
+     */
+    private function digestMark(Update $update, int $notificationId, string $position): Reply
+    {
+        $supervisor = $this->supervisorTelegram->linkedProfile($update->userId);
+        $notification = $supervisor === null ? null : SupervisorNotification::query()
+            ->whereKey($notificationId)
+            ->where('supervisor_profile_id', $supervisor->id)
+            ->first();
+        $students = $notification?->payload['students'] ?? [];
+        $date = (string) ($notification?->payload['date'] ?? '');
+        $targets = $position === 'all' ? $students : array_filter([$students[(int) $position] ?? null]);
+        if ($supervisor === null || $targets === [] || $date === '') {
+            return $this->reply($update, 'Bu ro‘yxat eskirgan yoki sizga tegishli emas.');
+        }
+
+        $done = [];
+        $failed = [];
+        foreach ($targets as [$studentId, $name]) {
+            try {
+                $this->marks->mark($supervisor->user, (int) $studentId, $date, DayMarkKind::Present, null, 'TELEGRAM');
+                $done[] = $name;
+            } catch (BusinessRuleException|ValidationException $exception) {
+                $failed[] = $name.': '.($exception instanceof ValidationException ? collect($exception->errors())->flatten()->first() : $exception->getMessage());
+            } catch (ModelNotFoundException|AuthorizationException) {
+                $failed[] = $name.': talaba endi sizning guruhingizda emas.';
+            }
+        }
+
+        $day = CarbonImmutable::parse($date)->format('d.m.Y');
+
+        return $this->reply($update, BotText::lines([
+            $done !== [] ? (count($done) === 1 ? "✅ {$done[0]} — {$day} kuni «Keldi» deb belgilandi." : '✅ '.count($done)." ta talaba {$day} kuni «Keldi» deb belgilandi.") : null,
+            $failed !== [] ? "❌ Belgilanmadi:\n".implode("\n", $failed) : null,
+        ]));
     }
 
     /**

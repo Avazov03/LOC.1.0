@@ -201,3 +201,28 @@ Rate limits (A73): 20 actions per minute per Telegram user, 6 attendance actions
 | Same update id twice | One processing, one attendance effect at most |
 | Two different updates, parallel check-in | One OPEN session |
 | Onboarding message replayed | One student |
+| Digest button pressed twice | One active PRESENT mark |
+| Scheduler tick repeated after the reminder time | One reminder per open session, one digest per supervisor per day |
+
+## 11. Work days
+
+On a day outside the student's work days (group mask or personal override), "Amaliyotni boshlash" replies:
+
+```text
+📅 Bugun sizning amaliyot kuningiz emas.
+Amaliyot kunlaringiz: Du, Chor, Ju.
+Bu kun «Kelmadi» deb hisoblanmaydi.
+```
+
+No event is written. "Mening amaliyotim" shows "🗓 Amaliyot kunlari". "Davomatim" shows each day with its icon (✅ ⏳ 📍 📝 ❌) and "(rahbar belgiladi)" for supervisor marks. After the university reminder time (default 18:00) a student whose session from today is still open gets one reminder to check out.
+
+## 12. Supervisor in the bot
+
+1. The supervisor opens "Profil va Telegram" on the web (or an admin opens the supervisor page) and creates a link `https://t.me/<bot>?start=s_<token>`. It is valid 24 hours, single-use, and only its hash is stored. Link attempts share the join rate limit.
+2. `/start s_<token>` links that Telegram account to the supervisor. A Telegram account linked to another supervisor is moved; a student account stays a student.
+3. A linked supervisor (not a student, not in onboarding) gets a short help text for any message; there is no student menu.
+4. Messages the supervisor receives:
+   - "🟢 {F.I.Sh.} amaliyotga keldi" / "🔴 … amaliyotdan ketdi" with group, time, organization, duration and distance, for students of internships they currently supervise (can be turned off in the profile);
+   - once a day after the reminder time, the list of today's expected students who are ABSENT or LOCATION_REJECTED, with a "✅ name" button per student and "✅ Hammasi keldi".
+5. A button press marks that date PRESENT through the same rules as the web (scope, 7-day window, assignment). Callback data is `dg:{digestId}:{index|all}`; a list that is stale or belongs to another supervisor is refused.
+6. Unlinking (by the supervisor or an admin) stops all messages immediately.
