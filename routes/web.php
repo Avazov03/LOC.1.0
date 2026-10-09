@@ -8,6 +8,7 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\ChangeRequestController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\InternshipController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\ProfileController;
@@ -26,6 +27,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+Route::middleware('auth')->post('/impersonate/leave', [ImpersonationController::class, 'leave'])->name('impersonate.leave');
 
 Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function () {
     Route::get('/dashboard', DashboardController::class)->name('dashboard');
@@ -68,6 +70,7 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
         Route::patch('/supervisors/{supervisor}/status', [SupervisorController::class, 'status'])->whereNumber('supervisor')->name('supervisors.status');
         Route::post('/supervisors/{supervisor}/telegram', [SupervisorController::class, 'telegramLink'])->whereNumber('supervisor')->name('supervisors.telegram.link');
         Route::delete('/supervisors/{supervisor}/telegram', [SupervisorController::class, 'telegramUnlink'])->whereNumber('supervisor')->name('supervisors.telegram.unlink');
+        Route::post('/supervisors/{supervisor}/impersonate', [ImpersonationController::class, 'start'])->whereNumber('supervisor')->middleware('throttle:10,1')->name('supervisors.impersonate');
 
         Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index');
         Route::get('/organizations/create', [OrganizationController::class, 'create'])->name('organizations.create');

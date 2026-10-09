@@ -14,6 +14,7 @@ export type NavEntry = {
 export type SharedProps = {
     auth: {
         user: { name: string; login: string | null; role: Role; university: string | null } | null;
+        impersonating: boolean;
     };
     navigation: NavEntry[];
     flash: {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Controllers\ImpersonationController;
 use App\Models\User;
 use App\Support\Navigation;
 use Illuminate\Http\Request;
@@ -35,6 +36,7 @@ class HandleInertiaRequests extends Middleware
                     'role' => $user->role->value,
                     'university' => $user->university?->name,
                 ] : null,
+                'impersonating' => $user instanceof User && $request->session()->has(ImpersonationController::SESSION_KEY),
             ],
             'navigation' => $user instanceof User ? Navigation::for($user) : [],
             'flash' => [

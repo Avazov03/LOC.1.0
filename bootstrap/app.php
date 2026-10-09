@@ -3,6 +3,7 @@
 use App\Exceptions\BusinessRuleException;
 use App\Http\Controllers\HealthController;
 use App\Http\Controllers\TelegramWebhookController;
+use App\Http\Middleware\BlockImpersonatedWrites;
 use App\Http\Middleware\EnsureActiveUser;
 use App\Http\Middleware\EnsureRole;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -26,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
             HandleInertiaRequests::class,
+            BlockImpersonatedWrites::class,
         ]);
         $middleware->alias([
             'role' => EnsureRole::class,

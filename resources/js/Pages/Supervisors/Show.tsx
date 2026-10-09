@@ -67,9 +67,23 @@ export default function SupervisorShow({ supervisor, periods, history }: { super
                         title={supervisor.name}
                         description={supervisor.position}
                         action={
-                            <Button variant="secondary" onClick={toggle}>
-                                {supervisor.status === 'ACTIVE' ? 'Nofaol qilish' : 'Faollashtirish'}
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                                {supervisor.status === 'ACTIVE' ? (
+                                    <Button
+                                        variant="tonal"
+                                        icon="user"
+                                        onClick={() =>
+                                            window.confirm('Rahbar panelini u ko‘rgandek ochasiz (faqat ko‘rish). Kirish audit jurnaliga yoziladi. Davom etasizmi?') &&
+                                            router.post(`/supervisors/${supervisor.id}/impersonate`)
+                                        }
+                                    >
+                                        Rahbar sifatida kirish
+                                    </Button>
+                                ) : null}
+                                <Button variant="secondary" onClick={toggle}>
+                                    {supervisor.status === 'ACTIVE' ? 'Nofaol qilish' : 'Faollashtirish'}
+                                </Button>
+                            </div>
                         }
                     />
                     <Dl

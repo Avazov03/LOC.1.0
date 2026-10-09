@@ -122,6 +122,21 @@ export default function AppLayout({ title, children }: { title: string; children
                 </header>
 
                 <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6">
+                    {auth.impersonating ? (
+                        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-md border border-warning/50 bg-warning/15 px-4 py-3 text-sm text-heading" role="status">
+                            <span className="flex items-center gap-2">
+                                <Icon name="alert" className="size-4 text-[#e09600] dark:text-warning" />
+                                Siz <b>{auth.user?.name}</b> sifatida ko‘ryapsiz (faqat ko‘rish rejimi, hech narsa o‘zgartirilmaydi).
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => router.post('/impersonate/leave')}
+                                className="rounded-md bg-primary-500 px-3 py-1.5 text-[0.8125rem] font-medium text-white hover:bg-primary-600"
+                            >
+                                Admin hisobiga qaytish
+                            </button>
+                        </div>
+                    ) : null}
                     {flash.success ? (
                         <div className="mb-6 flex items-center gap-2 rounded-md bg-success/15 px-4 py-3 text-sm text-[#56ca00] dark:text-success" role="status">
                             <Icon name="check" className="size-4" />
