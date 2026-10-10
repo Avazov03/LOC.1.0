@@ -333,7 +333,7 @@ A day is expected when an ACTIVE or ENDED assignment covers it and its weekday i
 When the resolved policy turns check-out off, a verified check-in creates a COMPLETED session of 0 seconds, and the day is PRESENT.
 
 ### A72. Missing device accuracy (revised 2026-10)
-A location sent with the phone's GPS always carries `horizontal_accuracy`; a point picked on the map in Telegram's attachment screen does not. A location without accuracy that is not a live location is refused as `MAP_LOCATION` and stored as a failed event; the bot asks for the "📍 Joylashuvni yuborish" button with GPS on. A live location without accuracy is accepted.
+Revised 10.10.2026: the earlier rule "no `horizontal_accuracy` and not live = map-picked point, refuse as `MAP_LOCATION`" rejected real students. In production the location button of a student standing at the organization sent no accuracy at all (4 refusals in a row; the same phone's accepted events the day before had none either). Telegram does not mark map-picked points, so a missing accuracy proves nothing. Such a location is now judged by the radius like any other and stored with `accuracy_missing: true`, shown on the attendance page as "Telefon GPS aniqligini yubormagan". `MAP_LOCATION` remains only to label old events.
 
 ### A73. Rate limits
 Bot actions 20 per minute per Telegram user; attendance actions 6 per minute per student; invite joins 5 per minute per Telegram user; wrong webhook secret 120 per minute per IP; report exports 5 per minute per user; change requests 10 per minute per user (A61). The limits only stop floods; the database constraints stay the real guards.

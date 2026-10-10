@@ -338,7 +338,7 @@ class AttendanceService
     }
 
     /**
-     * Anti-spoofing order: forwarded, coordinates, message age, map-picked point, accuracy, radius, reused point.
+     * Anti-spoofing order: forwarded, coordinates, message age, accuracy, radius, reused point.
      * The third element is evidence metadata stored on the event that is written next.
      *
      * @param  array<string, mixed>  $policy
@@ -356,10 +356,9 @@ class AttendanceService
         if ($location->deviceTimestamp !== null && $now->getTimestamp() - $location->deviceTimestamp > self::MAX_MESSAGE_AGE_SECONDS) {
             return [AttendanceOutcome::STALE_LOCATION, null, []];
         }
-        // A point picked on the map carries no GPS accuracy; a device fix or a live location does.
-        if ($location->accuracy === null && ! $location->live) {
-            return [AttendanceOutcome::MAP_LOCATION, null, []];
-        }
+        // Many Telegram clients send the location button's fix without horizontal_accuracy, so a missing accuracy
+        // cannot tell a map-picked point from a real one (A81a). It is recorded for staff, not refused.
+        $evidence = $location->accuracy === null && ! $location->live ? ['accuracy_missing' => true] : [];
 
         $measure = $this->verifier->measure($assignment->organization_id, $location->latitude, $location->longitude);
         if ($measure === null) {
@@ -369,13 +368,15 @@ class AttendanceService
         // A29: the policy threshold may be stricter; MAX_ACCURACY_METERS always applies.
         $threshold = min($policy['accuracy_threshold_meters'] ?? self::MAX_ACCURACY_METERS, self::MAX_ACCURACY_METERS);
         if ($location->accuracy !== null && $location->accuracy > $threshold) {
-            return [AttendanceOutcome::LOW_ACCURACY, $measure, []];
+            return [AttendanceOutcome::LOW_ACCURACY, $measure, $evidence];
         }
         if (! $measure['within']) {
-            return [AttendanceOutcome::OUTSIDE_RADIUS, $measure, []];
+            return [AttendanceOutcome::OUTSIDE_RADIUS, $measure, $evidence];
         }
 
-        return $this->reusedPoint($student, $location, $localDate, $measure);
+        [$code, $measure, $reuse] = $this->reusedPoint($student, $location, $localDate, $measure);
+
+        return [$code, $measure, $evidence + $reuse];
     }
 
     /**

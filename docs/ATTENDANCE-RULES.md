@@ -17,7 +17,7 @@ The order is fixed:
 7. Require a student location for this action. If missing: "Location yuborish kerak."
 8. Reject a forwarded location or a venue (A74), then latitude or longitude outside world bounds: `INVALID_LOCATION`.
 8a. Reject a Telegram message whose own `date` is more than 180 s before server "now": `STALE_LOCATION` (A81).
-8b. Reject a location with no `horizontal_accuracy` that is not a live location. That is a point picked on the map: `MAP_LOCATION` (A72).
+8b. A location with no `horizontal_accuracy` is not refused (many phones never send it); it goes through the radius check and is flagged `accuracy_missing` (A72, revised).
 9. Accuracy worse than `min(policy accuracy_threshold_meters, 300 m)`: `LOW_ACCURACY`, store a failed event, ask for a new location. 300 m is a hard cap a policy cannot loosen (A29).
 10. `ST_Distance` for the stored meter value. `ST_DWithin(student, organization, radius_meters)` for the decision.
 11. Distance greater than radius: `OUTSIDE_RADIUS`.

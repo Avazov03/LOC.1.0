@@ -145,18 +145,22 @@ class AttendanceServiceTest extends TestCase
         $this->assertSame(AttendanceService::MAX_ACCURACY_METERS, $outcome->data['threshold']);
     }
 
-    public function test_point_picked_on_the_map_is_refused(): void
+    public function test_location_without_gps_accuracy_is_judged_by_radius_and_flagged(): void
     {
         $world = $this->placed();
 
+        // Telegram's location button on many phones sends no horizontal_accuracy (production, 10.10.2026).
         $outcome = $this->service()->checkIn($world['student'], $this->inside(null));
 
-        $this->assertSame(AttendanceOutcome::MAP_LOCATION, $outcome->code);
-        $this->assertTrue($outcome->retryable());
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $outcome->code);
         $event = AttendanceEvent::query()->sole();
-        $this->assertSame(AttendanceEventType::FailedCheckIn, $event->event_type);
-        $this->assertSame(AttendanceOutcome::MAP_LOCATION, $event->metadata['reason']);
-        $this->assertSame(0, AttendanceSession::query()->count());
+        $this->assertSame(VerificationStatus::Verified, $event->verification_status);
+        $this->assertTrue($event->metadata['accuracy_missing']);
+        $this->assertSame(1, AttendanceSession::query()->count());
+
+        $far = $this->service()->checkOut($world['student'], new LocationInput(41.3300, 69.2797, null));
+        $this->assertSame(AttendanceOutcome::OUTSIDE_RADIUS, $far->code);
+        $this->assertTrue(AttendanceEvent::query()->latest('id')->first()->metadata['accuracy_missing']);
     }
 
     public function test_late_message_is_refused(): void

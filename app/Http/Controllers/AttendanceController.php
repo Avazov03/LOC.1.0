@@ -320,6 +320,7 @@ class AttendanceController extends Controller
                 ! empty($metadata['live_location']) ? 'Jonli joylashuv' : null,
                 ! empty($metadata['forwarded']) ? 'Uzatilgan joylashuv' : null,
                 ($metadata['reason'] ?? null) === AttendanceOutcome::MAP_LOCATION ? 'Xaritadan tanlangan nuqta (GPS aniqligi yo‘q)' : null,
+                ! empty($metadata['accuracy_missing']) ? 'Telefon GPS aniqligini yubormagan' : null,
                 ($metadata['reason'] ?? null) === AttendanceOutcome::STALE_LOCATION ? 'Kechikib kelgan xabar' : null,
                 isset($metadata['reused_event_id']) ? 'Avval yuborilgan nuqtaning nusxasi (#'.$metadata['reused_event_id'].')' : null,
                 isset($metadata['repeated_coordinates_event_id']) ? '⚠️ Bugungi avvalgi nuqta bilan aynan bir xil (#'.$metadata['repeated_coordinates_event_id'].')' : null,

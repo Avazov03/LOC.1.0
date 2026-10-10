@@ -137,7 +137,6 @@ Other failures:
 | --- | --- |
 | No location attached | Location yuborish kerak. |
 | LOW_ACCURACY | Location is too imprecise. Ask them to send it again. |
-| MAP_LOCATION | A point picked on the map is not accepted; turn GPS on and press «📍 Joylashuvni yuborish». |
 | STALE_LOCATION | The location arrived late; press the button again. |
 | REUSED_LOCATION | This exact point was sent before (saved or someone else's); send the current location on site. |
 | OUTSIDE_INTERNSHIP_PERIOD | Attendance is not accepted outside the internship period. |
