@@ -45,6 +45,7 @@ class SupervisorNotifier
             ! $in ? '⏱ '.BotText::duration((int) $data['duration_seconds']) : null,
             $data['distance'] !== null ? '📏 '.$data['distance'].' m' : null,
             ! empty($data['repeated_coordinates']) ? '⚠️ Joylashuv bugungi avvalgi nuqta bilan aynan bir xil — nusxa bo‘lishi mumkin, tekshiring.' : null,
+            ! empty($data['reused_point']) ? '⚠️ Joylashuv boshqa talaba yoki boshqa kundagi nuqta bilan aynan bir xil (Wi‑Fi bo‘yicha aniqlangan yoki nusxa) — shubha bo‘lsa, tekshiring.' : null,
         ]);
 
         $this->queue("event:{$outcome->event->id}", $supervisor->id, $text);

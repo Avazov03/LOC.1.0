@@ -19,8 +19,10 @@ use App\Telegram\BotHandler;
 use App\Telegram\BotText;
 use App\Telegram\Keyboard;
 use App\Telegram\UpdateProcessor;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Tests\Concerns\BuildsInternships;
 use Tests\Concerns\TalksToBot;
 use Tests\TestCase;
@@ -326,6 +328,57 @@ class TelegramBotTest extends TestCase
         $this->assertStringContainsString('ikkinchi marta', $this->say($userId, Keyboard::START));
         $this->assertSame(1, AttendanceSession::query()->count());
         $this->assertStringContainsString('Keldi', $this->say($userId, Keyboard::ATTENDANCE));
+    }
+
+    /**
+     * Production 10.10.2026: phones in one office send the same Wi-Fi position, without horizontal_accuracy,
+     * every day and for every student. All of these are real presences and must be accepted.
+     */
+    public function test_wifi_positions_without_accuracy_repeating_across_students_and_days_are_accepted(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-12 09:00', 'Asia/Tashkent')->utc());
+        $world = $this->world();
+        [$a, $b] = $world['students'];
+        $assignmentA = $this->placement($world['internship'], $a, $world['org']);
+        $assignmentB = $this->placement($world['internship'], $b, $world['org']);
+        $assignmentA->update(['start_at' => now()->subDays(3)]);
+        $assignmentB->update(['start_at' => now()->subDays(3)]);
+        $point = [41.311264, 69.279779];
+        $idA = (int) $a->telegram_user_id;
+        $idB = (int) $b->telegram_user_id;
+        // Redis expires rate-limit windows in real time, not in travelled time.
+        $later = function (int $hours) use ($a, $idA): void {
+            $this->travel($hours)->hours();
+            RateLimiter::clear('tg-attendance:'.$a->id);
+            RateLimiter::clear('tg-user:'.$idA);
+        };
+
+        // Day 1: B checks in at the shared point; A checks in and out at its own identical point.
+        $this->say($idB, Keyboard::START);
+        $this->assertStringContainsString('boshlanishi qayd etildi', $this->sendLocation($idB, ...$point, accuracy: null, exact: true));
+        $this->say($idA, Keyboard::START);
+        $this->assertStringContainsString('boshlanishi qayd etildi', $this->sendLocation($idA, 41.311250, 69.279800, accuracy: null, exact: true));
+        $later(7);
+        $this->say($idA, Keyboard::FINISH);
+        $this->assertStringContainsString('tugashi qayd etildi', $this->sendLocation($idA, 41.311250, 69.279800, accuracy: null, exact: true));
+
+        // Day 2: A checks in and out with B's point of yesterday.
+        $later(17);
+        $this->say($idA, Keyboard::START);
+        $this->assertStringContainsString('boshlanishi qayd etildi', $this->sendLocation($idA, ...$point, accuracy: null, exact: true));
+        $later(3);
+        $this->assertSame(BotText::ASK_LOCATION, $this->say($idA, Keyboard::FINISH));
+        $this->assertStringContainsString('tugashi qayd etildi', $this->sendLocation($idA, ...$point, accuracy: null, exact: true));
+
+        $this->assertSame(0, AttendanceEvent::query()->where('event_type', 'like', 'FAILED%')->count());
+        $flagged = AttendanceEvent::query()->where('student_profile_id', $a->id)->where('event_type', 'CHECK_IN')->latest('id')->first();
+        $this->assertTrue($flagged->metadata['accuracy_missing']);
+        $this->assertArrayHasKey('reused_event_id', $flagged->metadata);
+
+        // Far away is still refused.
+        $later(21);
+        $this->say($idA, Keyboard::START);
+        $this->assertStringContainsString('joyidan tashqaridasiz', mb_strtolower($this->sendLocation($idA, 41.3300, 69.2797, accuracy: null, exact: true)));
     }
 
     public function test_outside_radius_is_stored_and_the_student_may_retry(): void

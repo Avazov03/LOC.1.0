@@ -21,7 +21,7 @@ The order is fixed:
 9. Accuracy worse than `min(policy accuracy_threshold_meters, 300 m)`: `LOW_ACCURACY`, store a failed event, ask for a new location. 300 m is a hard cap a policy cannot loosen (A29).
 10. `ST_Distance` for the stored meter value. `ST_DWithin(student, organization, radius_meters)` for the decision.
 11. Distance greater than radius: `OUTSIDE_RADIUS`.
-11a. The same coordinates (7 decimals, about 1 cm) were already stored for another student, or for this student on another local date: `REUSED_LOCATION`, with `reused_event_id` in the failed event's metadata. The same point again on the same day for the same student is accepted, flagged `repeated_coordinates_event_id` and shown to the supervisor (A82).
+11a. Coordinates identical to an earlier event are not refused (Wi-Fi positions repeat). Another student or another local date: flagged `reused_event_id`; same student, same day: `repeated_coordinates_event_id`. Both are shown to the supervisor (A82, revised).
 12. Resolve policy (section 4). If check-in is disabled, stop.
 13. If an OPEN session exists: `DUPLICATE_ACTION`. Do not open another.
 14. If D3 applies and this local date already has a session while multiple sessions are disallowed: stop.

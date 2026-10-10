@@ -153,6 +153,7 @@ class AttendanceService
                     'organization' => $assignment->organization->name,
                     'distance' => $measure !== null ? (int) round($measure['distance']) : null,
                     'repeated_coordinates' => isset($evidence['repeated_coordinates_event_id']),
+                    'reused_point' => isset($evidence['reused_event_id']),
                 ], $event);
                 $this->supervisors->attendance($outcome, $gate['student'], $assignment);
 
@@ -229,6 +230,7 @@ class AttendanceService
                     'distance' => $measure !== null ? (int) round($measure['distance']) : null,
                     'duration_seconds' => $duration,
                     'repeated_coordinates' => isset($evidence['repeated_coordinates_event_id']),
+                    'reused_point' => isset($evidence['reused_event_id']),
                 ], $event);
                 $this->supervisors->attendance($outcome, $gate['student'], $assignment);
 
@@ -380,9 +382,10 @@ class AttendanceService
     }
 
     /**
-     * Two GPS fixes never repeat to 1 cm. The same point from another student, or from this student on another day,
-     * is a saved or shared location and is refused. The same point again today (check-out copied from check-in,
-     * or a retry with the phone's cached fix) is accepted but flagged for the supervisor.
+     * Telegram rounds to 6 decimals, and a phone without a GPS fix reports its Wi-Fi/cell position, which is the same
+     * point for every phone in that office and on every day (A82, revised). So a repeated point is never refused:
+     * the same point as another student or another day is flagged `reused_event_id`, the same point again today
+     * `repeated_coordinates_event_id`, and the supervisor is warned. The radius has already been checked.
      *
      * @param  array<string, mixed>  $measure
      * @return array{0: ?string, 1: ?array<string, mixed>, 2: array<string, mixed>}
@@ -397,7 +400,7 @@ class AttendanceService
 
         $foreign = $earlier->first(fn (AttendanceEvent $event) => (int) $event->student_profile_id !== $student->id || (string) $event->local_date !== $localDate);
         if ($foreign !== null) {
-            return [AttendanceOutcome::REUSED_LOCATION, $measure, ['reused_event_id' => $foreign->id]];
+            return [null, $measure, ['reused_event_id' => $foreign->id]];
         }
 
         return [null, $measure, $earlier->isEmpty() ? [] : ['repeated_coordinates_event_id' => $earlier->first()->id]];

@@ -175,26 +175,27 @@ class AttendanceServiceTest extends TestCase
         $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], new LocationInput(41.3112, 69.2797, 5.0, false, false, now()->getTimestamp()))->code);
     }
 
-    public function test_point_sent_by_another_student_is_refused(): void
+    public function test_point_sent_by_another_student_is_accepted_and_flagged(): void
     {
+        // Production 10.10.2026: two phones in one office reported the same Wi-Fi position without accuracy.
         $world = $this->world();
         $first = $world['students'][0];
         $second = $world['students'][1];
         $this->placement($world['internship'], $first, $world['org']);
         $this->placement($world['internship'], $second, $world['org']);
-        $point = new LocationInput(41.3112345, 69.2797, 8.0);
+        $point = new LocationInput(41.3112345, 69.2797, null);
 
         $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($first, $point)->code);
         $outcome = $this->service()->checkIn($second, $point);
 
-        $this->assertSame(AttendanceOutcome::REUSED_LOCATION, $outcome->code);
-        $failed = AttendanceEvent::query()->where('student_profile_id', $second->id)->sole();
-        $this->assertSame(AttendanceEventType::FailedCheckIn, $failed->event_type);
-        $this->assertSame(AttendanceEvent::query()->where('student_profile_id', $first->id)->value('id'), $failed->metadata['reused_event_id']);
-        $this->assertSame(0, AttendanceSession::query()->where('student_profile_id', $second->id)->count());
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $outcome->code);
+        $this->assertTrue($outcome->data['reused_point']);
+        $event = AttendanceEvent::query()->where('student_profile_id', $second->id)->sole();
+        $this->assertSame(VerificationStatus::Verified, $event->verification_status);
+        $this->assertSame(AttendanceEvent::query()->where('student_profile_id', $first->id)->value('id'), $event->metadata['reused_event_id']);
     }
 
-    public function test_own_point_from_another_day_is_refused(): void
+    public function test_own_point_from_another_day_is_accepted_and_flagged_but_still_needs_the_radius(): void
     {
         $world = $this->placed();
         $point = new LocationInput(41.3112345, 69.2797, 8.0);
@@ -204,8 +205,13 @@ class AttendanceServiceTest extends TestCase
         $this->assertSame(AttendanceOutcome::CHECKED_OUT, $this->service()->checkOut($world['student'], $this->inside())->code);
 
         $this->travel(1)->days();
-        $this->assertSame(AttendanceOutcome::REUSED_LOCATION, $this->service()->checkIn($world['student'], $point)->code);
-        $this->assertSame(AttendanceOutcome::CHECKED_IN, $this->service()->checkIn($world['student'], $this->inside())->code);
+        $again = $this->service()->checkIn($world['student'], $point);
+        $this->assertSame(AttendanceOutcome::CHECKED_IN, $again->code);
+        $this->assertTrue($again->data['reused_point']);
+
+        $this->travel(2)->hours();
+        $far = new LocationInput(41.3300, 69.2797, null);
+        $this->assertSame(AttendanceOutcome::OUTSIDE_RADIUS, $this->service()->checkOut($world['student'], $far)->code);
     }
 
     public function test_same_point_again_today_is_accepted_and_flagged(): void
