@@ -23,6 +23,7 @@ export type SharedProps = {
         invite_link?: string | null;
         telegram_link?: string | null;
         assignment_results?: AssignmentResult[] | null;
+        recovery_codes?: string[] | null;
     };
     appName: string;
 };
@@ -115,6 +116,7 @@ export type StudentDetail = {
     status: string;
     telegram_user_id: string | null;
     telegram_linked: boolean;
+    phone_verified: boolean;
     registered_at: string | null;
     group: string | null;
     course: string | null;

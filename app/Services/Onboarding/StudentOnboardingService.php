@@ -13,6 +13,7 @@ use App\Models\StudentGroupMembership;
 use App\Models\StudentProfile;
 use App\Models\User;
 use App\Services\Internships\InviteService;
+use App\Support\Phone;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
@@ -108,6 +109,8 @@ class StudentOnboardingService
                     'telegram_user_id' => $telegramUserId,
                     'status' => StudentStatus::Active,
                 ]);
+                // The bot only accepts the phone from the sender's own contact button (A83).
+                $profile->forceFill(['phone_verified_at' => now()])->save();
 
                 $now = now();
                 StudentGroupMembership::query()->create([
@@ -153,7 +156,7 @@ class StudentOnboardingService
      */
     private function phoneRegistered(int $universityId, string $phone): bool
     {
-        $wanted = self::phoneDigits($phone);
+        $wanted = Phone::digits($phone);
         if ($wanted === '') {
             return false;
         }
@@ -162,14 +165,7 @@ class StudentOnboardingService
             ->where('university_id', $universityId)
             ->whereNotNull('phone')
             ->pluck('phone')
-            ->contains(fn (string $existing) => self::phoneDigits($existing) === $wanted);
-    }
-
-    private static function phoneDigits(string $phone): string
-    {
-        $digits = preg_replace('/\D+/', '', $phone) ?? '';
-
-        return strlen($digits) === 9 ? '998'.$digits : $digits;
+            ->contains(fn (string $existing) => Phone::digits($existing) === $wanted);
     }
 
     /**

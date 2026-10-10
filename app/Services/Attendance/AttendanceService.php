@@ -35,6 +35,7 @@ class AttendanceService
         private readonly LocationVerifier $verifier,
         private readonly WorkScheduleService $schedules,
         private readonly SupervisorNotifier $supervisors,
+        private readonly HolidayService $holidays,
     ) {}
 
     /**
@@ -324,6 +325,10 @@ class AttendanceService
      */
     private function notWorkDay(array $gate): ?AttendanceOutcome
     {
+        $holiday = $this->holidays->nameOn((int) $gate['student']->university_id, $gate['local_date']);
+        if ($holiday !== null) {
+            return new AttendanceOutcome(AttendanceOutcome::HOLIDAY, ['name' => $holiday]);
+        }
         $mask = $this->schedules->maskFor($gate['student']->id, $gate['assignment']->internship);
         if (WorkDays::includes($mask, $gate['local_date'])) {
             return null;

@@ -6,6 +6,8 @@ use App\Enums\StudentStatus;
 use App\Models\AttendanceEvent;
 use App\Models\AuditLog;
 use App\Models\StudentProfile;
+use App\Models\SupervisorNotification;
+use App\Models\TelegramConversation;
 use App\Services\Onboarding\OnboardingException;
 use App\Services\Students\StudentTelegramRebindService;
 use App\Telegram\BotText;
@@ -112,6 +114,101 @@ class StudentIdentityTest extends TestCase
         $this->toPhoneStep($world, $userId);
 
         $this->assertStringContainsString('Talaba ID', $this->sendContact($userId, $other['students'][0]->phone, $userId));
+    }
+
+    // ------------------------------------------------------------ self-recovery by verified phone
+
+    public function test_student_recovers_the_profile_with_a_verified_number_from_a_new_account(): void
+    {
+        $world = $this->world();
+        $student = $world['students'][0];
+        $student->forceFill(['phone_verified_at' => now()])->save();
+        $world['profile']->forceFill(['telegram_user_id' => 770001])->save();
+        $oldId = (int) $student->telegram_user_id;
+        $newId = 992001;
+
+        $this->assertStringContainsString('Raqamni yuborish', $this->say($newId, '/start'));
+        $this->bot()->reset();
+        $this->sendContact($newId, preg_replace('/\D/', '', $student->phone), $newId);
+
+        $this->assertStringContainsString('Profilingiz tiklandi', $this->textsTo($newId)[0]);
+        $this->assertStringContainsString('boshqa Telegram hisobiga ko‘chirildi', $this->textsTo($oldId)[0]);
+        $this->assertSame($newId, (int) $student->fresh()->telegram_user_id);
+        $this->assertSame(2, StudentProfile::query()->count(), 'No new profile is created.');
+        $audit = AuditLog::query()->where('action', 'student.telegram_recover')->sole();
+        $this->assertSame((string) $oldId, $audit->before['telegram_user_id']);
+        $this->assertSame('verified_phone', $audit->metadata['method']);
+        $this->assertStringContainsString('qayta tikladi', (string) SupervisorNotification::query()->where('key', 'like', 'recover:%')->value('text'));
+        $this->assertSame(BotText::NEED_INVITE, $this->say($oldId, Keyboard::START));
+    }
+
+    public function test_unverified_number_or_someone_elses_contact_does_not_recover(): void
+    {
+        $world = $this->world();
+        $student = $world['students'][0];
+        $before = (int) $student->telegram_user_id;
+
+        $this->assertSame(BotText::RECOVERY_NOT_FOUND, $this->sendContact(992002, $student->phone, 992002));
+        $student->forceFill(['phone_verified_at' => now()])->save();
+        $this->assertStringContainsString('Faqat o‘zingizning', $this->sendContact(992003, $student->phone, 555));
+        $student->update(['status' => StudentStatus::Blocked]);
+        $this->assertSame(BotText::RECOVERY_NOT_FOUND, $this->sendContact(992004, $student->phone, 992004));
+
+        $this->assertSame($before, (int) $student->fresh()->telegram_user_id);
+        $this->assertSame(0, AuditLog::query()->where('action', 'student.telegram_recover')->count());
+    }
+
+    public function test_joining_again_with_a_verified_number_restores_the_old_profile(): void
+    {
+        $world = $this->world();
+        $student = $world['students'][0];
+        $student->forceFill(['phone_verified_at' => now()])->save();
+        $newId = 992005;
+        $this->toPhoneStep($world, $newId);
+        $this->bot()->reset();
+        $this->sendContact($newId, $student->phone, $newId);
+
+        $this->assertStringContainsString('Profilingiz tiklandi', $this->textsTo($newId)[0]);
+        $this->assertSame($newId, (int) $student->fresh()->telegram_user_id);
+        $this->assertNull(TelegramConversation::query()->where('telegram_user_id', $newId)->first());
+    }
+
+    public function test_staff_phone_edit_clears_verification_and_onboarding_sets_it(): void
+    {
+        $world = $this->world();
+        $userId = 992006;
+        $this->toPhoneStep($world, $userId);
+        $this->sendContact($userId, '+998901110001', $userId);
+        $this->say($userId, Keyboard::SKIP);
+        $this->say($userId, Keyboard::CONFIRM);
+        $student = StudentProfile::query()->where('telegram_user_id', $userId)->sole();
+        $this->assertNotNull($student->phone_verified_at);
+
+        $this->actingAs($world['admin'])->put("/academic/students/{$student->id}", [
+            'first_name' => $student->first_name, 'last_name' => $student->last_name, 'phone' => '+998901110002', 'student_code' => null, 'reason' => 'Raqam o‘zgardi',
+        ])->assertSessionHasNoErrors();
+        $this->assertNull($student->fresh()->phone_verified_at);
+    }
+
+    public function test_student_confirms_or_updates_the_number_from_the_profile(): void
+    {
+        $world = $this->world();
+        $student = $world['students'][0];
+        $userId = (int) $student->telegram_user_id;
+
+        $this->assertStringContainsString('tasdiqlanmagan', $this->say($userId, Keyboard::PROFILE));
+        $this->assertStringContainsString('Mayli', $this->say($userId, Keyboard::SKIP));
+
+        $this->say($userId, Keyboard::PROFILE);
+        $this->assertStringContainsString('boshqa talabaga tegishli', $this->sendContact($userId, $world['students'][1]->phone, $userId));
+        $this->assertNull($student->fresh()->phone_verified_at);
+
+        $this->assertStringContainsString('tasdiqlandi: +998935550011', $this->sendContact($userId, '998935550011', $userId));
+        $fresh = $student->fresh();
+        $this->assertSame('+998935550011', $fresh->phone);
+        $this->assertNotNull($fresh->phone_verified_at);
+        $this->assertSame(1, AuditLog::query()->where('action', 'student.phone_change')->count());
+        $this->assertStringContainsString('✅', $this->say($userId, Keyboard::PROFILE));
     }
 
     // ------------------------------------------------------------ rebind

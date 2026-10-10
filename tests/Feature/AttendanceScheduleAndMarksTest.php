@@ -9,6 +9,7 @@ use App\Models\AuditLog;
 use App\Models\InternshipParticipant;
 use App\Models\StudentProfile;
 use App\Models\SupervisorNotification;
+use App\Models\UniversityHoliday;
 use App\Services\Attendance\AttendanceDayQuery;
 use App\Services\Attendance\AttendanceMarkService;
 use App\Services\Attendance\AttendanceOutcome;
@@ -113,6 +114,36 @@ class AttendanceScheduleAndMarksTest extends TestCase
         $this->assertSame(0, (int) $row->expected);
         $this->assertNull($row->day_status);
         $this->assertSame('ABSENT', $this->day($student, '2026-10-12')->day_status);
+    }
+
+    public function test_holiday_blocks_check_in_and_nobody_is_absent(): void
+    {
+        $this->on('2026-10-12', 18, 30);
+        $world = $this->placed();
+        $this->linkSupervisor($world);
+        $student = $world['students'][0];
+
+        $this->actingAs($world['supervisor'])->post('/settings/holidays', ['date' => '2026-10-12', 'name' => 'Bayram'])->assertForbidden();
+        $this->actingAs($world['admin'])->post('/settings/holidays', ['date' => '2026-10-12', 'name' => 'Bayram'])->assertSessionHas('success');
+        $this->actingAs($world['admin'])->post('/settings/holidays', ['date' => '2026-10-12', 'name' => 'Takror'])->assertSessionHas('error');
+        $this->actingAs($world['admin'])->get('/settings')->assertInertia(fn ($page) => $page->where('holidays.0.date', '2026-10-12')->where('holidays.0.name', 'Bayram'));
+
+        $outcome = app(AttendanceService::class)->checkIn($student, $this->inside());
+        $this->assertSame(AttendanceOutcome::HOLIDAY, $outcome->code);
+        $this->assertStringContainsString('dam olish kuni: Bayram', BotText::outcome($outcome));
+        $this->assertSame(0, AttendanceEvent::query()->count());
+        $row = $this->day($student, '2026-10-12');
+        $this->assertSame(0, (int) $row->expected);
+        $this->assertNull($row->day_status);
+
+        app(DailyReminderService::class)->run();
+        $this->assertSame([], $this->bot()->sent);
+        $this->assertSame('SKIPPED', SupervisorNotification::query()->where('key', 'like', 'digest:%')->sole()->status);
+
+        $holidayId = (int) UniversityHoliday::query()->value('id');
+        $this->actingAs($world['admin'])->delete("/settings/holidays/{$holidayId}")->assertSessionHas('success');
+        $this->assertSame('ABSENT', $this->day($student, '2026-10-12')->day_status);
+        $this->assertSame(['holiday.create', 'holiday.delete'], AuditLog::query()->where('action', 'like', 'holiday.%')->orderBy('id')->pluck('action')->all());
     }
 
     public function test_a_student_override_replaces_the_group_days(): void
@@ -325,6 +356,29 @@ class AttendanceScheduleAndMarksTest extends TestCase
         $this->bot()->reset();
         $this->assertSame(['reminders' => 0, 'digests' => 0], app(DailyReminderService::class)->run());
         $this->assertSame([], $this->bot()->sent);
+    }
+
+    public function test_digest_is_split_by_group_and_buttons_follow_the_numbering(): void
+    {
+        $this->on('2026-10-12', 18, 30);
+        $world = $this->placed();
+        $this->linkSupervisor($world);
+        [$first, $second] = $world['students'];
+        $other = $world['group']->replicate();
+        $other->fill(['name' => '000-boshqa'])->save();
+        $second->update(['current_group_id' => $other->id]);
+
+        app(DailyReminderService::class)->run();
+
+        $digest = collect($this->bot()->sent)->firstWhere('chat_id', self::SUPERVISOR_TG);
+        $text = $digest['text'];
+        $this->assertStringContainsString("👥 000-boshqa (1)\n1. ".$second->fullName(), $text);
+        $this->assertStringContainsString('👥 '.$world['group']->name." (1)\n2. ".$first->fullName(), $text);
+        $buttons = $digest['reply_markup']['inline_keyboard'];
+        $this->assertStringContainsString($second->fullName().' · 000-boshqa', $buttons[0][0]['text']);
+
+        $this->assertStringContainsString($second->fullName(), $this->press(self::SUPERVISOR_TG, $buttons[0][0]['callback_data']));
+        $this->assertSame($second->id, AttendanceDayMark::query()->sole()->student_profile_id);
     }
 
     public function test_no_digest_on_a_non_work_day(): void

@@ -1,5 +1,6 @@
 import { Link } from '@inertiajs/react';
 import { AttendanceFilterBar, DayMarkControls, DayStatusBadge, duration } from '@/Components/AttendanceUi';
+import GroupSwitcher from '@/Components/GroupSwitcher';
 import { Badge, Card, CardHeader, EmptyRow, Pagination, Table, Td } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
 import type { AttendanceFilterOptions, AttendanceFilterValues, DayMark, DayStatus, Paginated, StatusOption } from '@/types';
@@ -27,6 +28,20 @@ const cards: Array<{ key: DayStatus; label: string; className: string }> = [
     { key: 'EXCUSED', label: 'Sababli', className: 'text-[#00a7cc] dark:text-info' },
     { key: 'ABSENT', label: 'Kelmadi', className: 'text-secondary' },
 ];
+
+/** With more groups than this the filter bar's select is the switcher; chips would only crowd the page. */
+const GROUP_CHIPS = 7;
+
+function groupHref(filters: AttendanceFilterValues, group: number | null): string {
+    const query = new URLSearchParams();
+    Object.entries({ ...filters, group }).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== '') {
+            query.set(key, String(value));
+        }
+    });
+    const qs = query.toString();
+    return qs === '' ? '/attendance' : `/attendance?${qs}`;
+}
 
 export default function AttendanceIndex({
     filters,
@@ -67,6 +82,14 @@ export default function AttendanceIndex({
                     title={`Kunlik davomat · ${date}`}
                     description="Talaba kelish va ketishni botda qayd etadi, ishlagan vaqti yoniga yoziladi. Talaba boshqa joyda bo‘lgan yoki sababli kelmagan bo‘lsa, «Keldi» yoki «Sababli» deb belgilang. Faqat amaliyot kunlari hisoblanadi."
                 />
+                {options.groups.length <= GROUP_CHIPS ? (
+                    <div className="px-6 pb-3">
+                        <GroupSwitcher
+                            active={filters.group ? String(filters.group) : 'all'}
+                            items={[{ key: 'all', label: 'Barcha guruhlar', href: groupHref(filters, null) }, ...options.groups.map((group) => ({ key: String(group.id), label: group.name, href: groupHref(filters, group.id) }))]}
+                        />
+                    </div>
+                ) : null}
                 <AttendanceFilterBar url="/attendance" filters={filters} options={options} statuses={statuses} max={today} />
                 <Table head={['Talaba', 'Guruh', 'Tashkilot', 'Kelish', 'Ketish', 'Ishlagan vaqt', 'Holat', '']}>
                     {rows.data.length === 0 ? (

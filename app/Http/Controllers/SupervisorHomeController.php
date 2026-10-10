@@ -36,6 +36,7 @@ class SupervisorHomeController extends Controller
         return Inertia::render('Supervisor/Groups', [
             'internships' => $internships->map(fn (Internship $internship) => [
                 'id' => $internship->id,
+                'group_id' => $internship->student_group_id,
                 'group' => $internship->group->name,
                 'program' => $internship->group->studyYear->program->name,
                 'course' => $internship->group->studyYear->name,
@@ -54,10 +55,16 @@ class SupervisorHomeController extends Controller
         $timezone = $user->university->timezone;
         $model = $this->scope->findInternship($user, $internship);
         $model->load(['group.studyYear.program', 'academicYear']);
+        $siblings = $this->scope->internships($user)
+            ->with('group:id,name')
+            ->withCount('participants')
+            ->orderByDesc('period_start')
+            ->get();
 
         return Inertia::render('Supervisor/GroupShow', [
             'internship' => [
                 'id' => $model->id,
+                'group_id' => $model->student_group_id,
                 'group' => $model->group->name,
                 'program' => $model->group->studyYear->program->name,
                 'course' => $model->group->studyYear->name,
@@ -69,6 +76,7 @@ class SupervisorHomeController extends Controller
             ],
             'participants' => $internships->participants($model)->map(fn ($participant) => Present::participant($participant, $timezone)),
             'organizations' => $organizations->activeOptions($user)->values(),
+            'groups' => $siblings->map(fn (Internship $row) => ['id' => $row->id, 'group' => $row->group->name, 'participants_count' => $row->participants_count])->values(),
         ]);
     }
 

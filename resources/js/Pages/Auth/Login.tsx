@@ -49,7 +49,10 @@ export default function Login() {
                         {form.processing ? 'Tekshirilmoqda…' : 'Kirish'}
                     </Button>
                 </form>
-                <p className="mt-6 text-center text-sm text-muted">Talabalar tizimga Telegram bot orqali kiradi.</p>
+                <div className="mt-6 space-y-1 text-center text-sm text-muted">
+                    <p>Parolni unutdingizmi? Universitet administratoriga murojaat qiling: u yangi parol o‘rnatib beradi.</p>
+                    <p>Talabalar tizimga Telegram bot orqali kiradi.</p>
+                </div>
             </Card>
         </GuestLayout>
     );

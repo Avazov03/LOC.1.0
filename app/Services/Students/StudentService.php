@@ -79,10 +79,15 @@ class StudentService
             }
 
             $before = $this->identity($student);
+            $phone = trim($data['phone']);
+            if ($phone !== $student->phone) {
+                // A typed number proves nothing about the Telegram account; self-recovery needs the button again.
+                $student->forceFill(['phone_verified_at' => null]);
+            }
             $student->update([
                 'first_name' => trim($data['first_name']),
                 'last_name' => trim($data['last_name']),
-                'phone' => trim($data['phone']),
+                'phone' => $phone,
                 'student_code' => $code,
             ]);
             $student->user()->update(['name' => $student->fullName()]);

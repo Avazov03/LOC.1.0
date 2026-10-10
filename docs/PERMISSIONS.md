@@ -40,7 +40,11 @@ Every item in §70 writes `audit_logs`: admin login, organization create/update,
 
 **Work as supervisor ("Rahbar sifatida kirish").** An admin may open the panel as an ACTIVE supervisor of the same university, from the supervisor page, and use every supervisor function with the supervisor's scope. The session keeps the admin id, and every audit row written meanwhile carries `impersonator_user_id` / `impersonator_name` in metadata; history shows "{supervisor} (admin {name} orqali)". The supervisor's own account stays off limits: password change, Telegram link/unlink and notification settings are refused (`ProtectImpersonatedAccount`). Start and end are audited as `auth.impersonate` / `auth.impersonate_end` with the admin as actor; it does not count as the supervisor's login. A sticky banner with "Admin hisobiga qaytish" is shown the whole time.
 
-**Student Telegram rebind.** An admin (own university) or a supervisor (students of internships with an open supervisor period for them) may create a one-time 24 h link for an ACTIVE student on the student page (`POST /students/{id}/telegram-rebind`, 10 per minute). Anyone else gets 404. Opening it moves the student to the new Telegram account and the old account loses access (ASSUMPTIONS A84).
+**Student Telegram rebind.** An admin (own university) or a supervisor (students of internships with an open supervisor period for them) may create a one-time 24 h link for an ACTIVE student on the student page (`POST /students/{id}/telegram-rebind`, 10 per minute). Anyone else gets 404. Opening it moves the student to the new Telegram account and the old account loses access (ASSUMPTIONS A84). A student with a verified phone can also recover alone by sharing their own contact (A85); staff only see the result in the audit log and the supervisor's Telegram message.
+
+**Holidays.** Only an admin adds or removes university days off in Settings (`/settings/holidays`); a supervisor gets 403 (A87).
+
+**Two-factor sign-in.** Every admin and supervisor turns their own second factor on or off in Profile with the current password (A86). An admin may turn it off for a supervisor of the own university (`POST /supervisors/{id}/two-factor-reset`); nobody can read another user's secret. While impersonating, the supervisor's second factor is off limits like the password. A password change by anyone signs out the user's other sessions (A88).
 
 ## 3. Supervisor
 

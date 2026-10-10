@@ -27,7 +27,7 @@ class StudentProfile extends Model
 
     protected function casts(): array
     {
-        return ['status' => StudentStatus::class, 'telegram_rebind_expires_at' => 'immutable_datetime'];
+        return ['status' => StudentStatus::class, 'telegram_rebind_expires_at' => 'immutable_datetime', 'phone_verified_at' => 'immutable_datetime'];
     }
 
     public function user(): BelongsTo

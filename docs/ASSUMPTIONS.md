@@ -370,3 +370,18 @@ Onboarding accepts the phone only from Telegram's "share my number" button whose
 
 ### A84. Student Telegram rebind
 An admin or the student's current supervisor creates a one-time link `/start r_<token>` (24 h, only the SHA-256 hash is stored, shown once). Opening it from a new Telegram account moves the existing profile to that account: history, group, participation and assignment stay; the old account loses access and receives a notice. A Telegram account that already belongs to another student cannot take the link; a non-ACTIVE student cannot get or use one. Audited as `student.telegram_rebind_link` (staff) and `student.telegram_rebind` (old and new ids).
+
+### A85. Self-recovery by a verified phone
+`student_profiles.phone_verified_at` is set when the number came from the "share my number" button (onboarding, recovery, confirmation in «👤 Profilim» or right after a rebind) and cleared when staff edit the phone. Telegram allows one account per number, so sharing one's own contact proves the number. A Telegram account that is not linked to any student and shares its own contact (after `/start` without an invite, or at the phone step of a new invite) takes over the profile when exactly one ACTIVE student of any university has that verified number: no new profile, the old account gets a notice, the current supervisor gets a Telegram message, audited as `student.telegram_recover` (`method: verified_phone`). Unverified (legacy) numbers, blocked students and someone else's contact never recover; those students use the rebind link (A84). A linked student who shares a new own number updates the phone (`student.phone_change`) unless another student of the university already has it. There is no separate "change phone" feature.
+
+### A86. Staff two-factor sign-in
+Optional TOTP (RFC 6238, 6 digits, 30 s, ±1 step) for admins and supervisors, turned on in Profile with the current password and a confirming code. The secret and the bcrypt hashes of 8 one-time recovery codes are stored encrypted on `users`. After a correct password the user is held in the session for 300 s until the code is given (5 wrong codes end the attempt); a code is refused a second time within its step. An admin can turn it off for a supervisor (`user.two_factor_reset`); a locked-out admin runs `php artisan user:two-factor-reset <login>` on the server. An impersonating admin cannot change the supervisor's second factor.
+
+### A87. University holidays
+Admins list days off in Settings. On such a date the bot refuses check-in (`HOLIDAY`, not a failed attempt), the day is not expected, so nobody is ABSENT and the evening digest is skipped. Anything recorded before the holiday was added keeps its status (PRESENT etc.). Audited as `holiday.create` / `holiday.delete`.
+
+### A88. Sessions after a password change
+`AuthenticateSession` is on for the web group: a password change by the user, by an admin or by the server command signs out every other session of that user on its next request. The session that made the change stays signed in.
+
+### A89. Browser security headers
+The web panel sends a Content-Security-Policy (scripts only from the origin or with the per-request nonce; map tiles from `*.tile.openstreetmap.org`), Permissions-Policy, Cross-Origin-Opener-Policy and, over HTTPS, HSTS for one year. The CSP is skipped while the Vite dev server runs.

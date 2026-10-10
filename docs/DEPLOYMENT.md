@@ -48,6 +48,15 @@ Telegram only delivers webhooks to HTTPS. The nginx container listens on port 80
 
 The production server uses a host nginx with a Let's Encrypt certificate (certbot) that proxies to `127.0.0.1:8080` and sends `X-Forwarded-For` and `X-Forwarded-Proto`. Set `TRUSTED_PROXIES=172.16.0.0/12` (the Docker bridge networks) and `SESSION_SECURE_COOKIE=true`.
 
+The application adds HSTS (one year) on HTTPS requests and a Content-Security-Policy (ASSUMPTIONS A89); do not add a second CSP in the proxy.
+
+Firewall: only SSH, HTTP and HTTPS are reachable from outside. On the server UFW allows `22/tcp`, `80/tcp`, `443/tcp`; the app stack listens on `127.0.0.1:8080` only, so it needs no rule. The Lightsail network firewall should list the same three ports.
+
+```bash
+sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp
+sudo ufw --force enable && sudo ufw status verbose
+```
+
 Set `APP_URL` to the HTTPS address. Behind a proxy, configure trusted proxies so Laravel sees the HTTPS scheme and the client IP (the webhook and login rate limits key on the IP).
 
 ## 4. Telegram webhook
@@ -95,5 +104,7 @@ chmod +x /opt/loc/scripts/backup.sh && mkdir -p -m 700 ~/loc-backups
 These dumps protect against a bad migration or a deleted row, not against losing the server. Also turn on Lightsail automatic snapshots (instance → Snapshots → Automatic snapshots), and keep at least weekly dumps off the server, plus `storage/app` if you need finished CSV files. A restore drill was run on 8 October 2026: dump of the demo database, restore into a new database, identical row counts for users, events, sessions, audit rows, organizations and migrations, PostGIS present, both immutability triggers present.
 
 ## 8. Logs and updates
+
+A staff user who lost both the authenticator phone and the recovery codes: an admin turns the second factor off on the supervisor page; for an admin run `docker compose exec app php artisan user:two-factor-reset <login>`. A forgotten admin password is reset with `admin:ensure` from `ADMIN_PASSWORD` in `.env`.
 
 Application logs go to `storage/logs` (set `LOG_CHANNEL=daily` or `stderr` for container logging). Logs never contain the bot token. To update: `git pull --ff-only && ./deploy.sh`.

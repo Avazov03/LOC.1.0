@@ -62,8 +62,9 @@ class SendSupervisorNotification implements ShouldQueue
         }
 
         $rows = [];
-        foreach ($students as $index => [, $name]) {
-            $rows[] = [['text' => '✅ '.mb_substr((string) $name, 0, 40), 'callback_data' => "dg:{$notification->id}:{$index}"]];
+        foreach ($students as $index => $student) {
+            $label = mb_substr((string) $student[1], 0, 40).(empty($student[2]) ? '' : ' · '.mb_substr((string) $student[2], 0, 16));
+            $rows[] = [['text' => '✅ '.$label, 'callback_data' => "dg:{$notification->id}:{$index}"]];
         }
         if (count($students) > 1) {
             $rows[] = [['text' => '✅ Hammasi keldi', 'callback_data' => "dg:{$notification->id}:all"]];

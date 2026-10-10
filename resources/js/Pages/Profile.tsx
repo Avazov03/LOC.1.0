@@ -1,5 +1,6 @@
 import { router, useForm, usePage } from '@inertiajs/react';
 import { FormEvent, useState } from 'react';
+import TwoFactorCard, { type TwoFactorState } from '@/Components/TwoFactorCard';
 import { Badge, Button, Card, CardHeader, Dl, Field, Input } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
 import type { SharedProps } from '@/types';
@@ -17,11 +18,13 @@ export default function Profile({
     supervisor,
     reminderTime,
     botUsername,
+    twoFactor,
 }: {
     user: { name: string; login: string; email: string | null; role: string };
     supervisor: Supervisor | null;
     reminderTime: string;
     botUsername: string | null;
+    twoFactor: TwoFactorState;
 }) {
     const { flash } = usePage<SharedProps>().props;
     const [copied, setCopied] = useState(false);
@@ -61,7 +64,7 @@ export default function Profile({
                     </Card>
 
                     <Card>
-                        <CardHeader title="Parolni o‘zgartirish" description="Kamida 8 belgi. O‘zgartirilgach, boshqa qurilmalardagi seanslar keyingi kirishda yangi parolni so‘raydi." />
+                        <CardHeader title="Parolni o‘zgartirish" description="Kamida 8 belgi. O‘zgartirilgach, boshqa qurilma va brauzerlardagi seanslar darhol yopiladi; shu oynada ishlashda davom etasiz." />
                         <form onSubmit={submit} noValidate className="grid gap-4 px-6 pb-6">
                             <Field label="Joriy parol" htmlFor="current_password" error={form.errors.current_password}>
                                 <Input
@@ -99,6 +102,8 @@ export default function Profile({
                             </div>
                         </form>
                     </Card>
+
+                    <TwoFactorCard state={twoFactor} />
                 </div>
 
                 {supervisor ? (

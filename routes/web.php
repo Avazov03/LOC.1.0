@@ -24,6 +24,8 @@ Route::get('/', fn () => redirect()->route(auth()->check() ? 'dashboard' : 'logi
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
     Route::post('/login', [AuthenticatedSessionController::class, 'store'])->name('login.store');
+    Route::get('/two-factor-challenge', [AuthenticatedSessionController::class, 'challenge'])->name('two-factor.challenge');
+    Route::post('/two-factor-challenge', [AuthenticatedSessionController::class, 'verifyChallenge'])->middleware('throttle:10,1')->name('two-factor.verify');
 });
 
 Route::middleware('auth')->post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
@@ -62,6 +64,8 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
 
         Route::get('/settings', [SettingsController::class, 'edit'])->name('settings.edit');
         Route::put('/settings', [SettingsController::class, 'update'])->name('settings.update');
+        Route::post('/settings/holidays', [SettingsController::class, 'storeHoliday'])->name('settings.holidays.store');
+        Route::delete('/settings/holidays/{holiday}', [SettingsController::class, 'destroyHoliday'])->whereNumber('holiday')->name('settings.holidays.destroy');
 
         Route::get('/supervisors', [SupervisorController::class, 'index'])->name('supervisors.index');
         Route::post('/supervisors', [SupervisorController::class, 'store'])->name('supervisors.store');
@@ -70,6 +74,7 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
         Route::patch('/supervisors/{supervisor}/status', [SupervisorController::class, 'status'])->whereNumber('supervisor')->name('supervisors.status');
         Route::post('/supervisors/{supervisor}/telegram', [SupervisorController::class, 'telegramLink'])->whereNumber('supervisor')->name('supervisors.telegram.link');
         Route::delete('/supervisors/{supervisor}/telegram', [SupervisorController::class, 'telegramUnlink'])->whereNumber('supervisor')->name('supervisors.telegram.unlink');
+        Route::post('/supervisors/{supervisor}/two-factor-reset', [SupervisorController::class, 'twoFactorReset'])->whereNumber('supervisor')->name('supervisors.two-factor.reset');
         Route::post('/supervisors/{supervisor}/impersonate', [ImpersonationController::class, 'start'])->whereNumber('supervisor')->middleware('throttle:10,1')->name('supervisors.impersonate');
 
         Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations.index');
@@ -128,6 +133,11 @@ Route::middleware(['auth', 'active', 'role:ADMIN,SUPERVISOR'])->group(function (
 
     Route::get('/profile', [ProfileController::class, 'show'])->name('profile');
     Route::put('/profile/password', [ProfileController::class, 'password'])->middleware('throttle:6,1')->name('profile.password');
+    Route::post('/profile/two-factor', [ProfileController::class, 'twoFactorBegin'])->middleware('throttle:6,1')->name('profile.two-factor.begin');
+    Route::delete('/profile/two-factor/setup', [ProfileController::class, 'twoFactorCancel'])->name('profile.two-factor.cancel');
+    Route::post('/profile/two-factor/confirm', [ProfileController::class, 'twoFactorConfirm'])->middleware('throttle:10,1')->name('profile.two-factor.confirm');
+    Route::post('/profile/two-factor/recovery-codes', [ProfileController::class, 'twoFactorCodes'])->middleware('throttle:6,1')->name('profile.two-factor.codes');
+    Route::delete('/profile/two-factor', [ProfileController::class, 'twoFactorDisable'])->middleware('throttle:6,1')->name('profile.two-factor.disable');
     Route::post('/students/{student}/telegram-rebind', [StudentController::class, 'telegramRebind'])->whereNumber('student')->middleware('throttle:10,1')->name('students.telegram-rebind');
     Route::put('/internships/{internship}/students/{student}/work-days', [InternshipController::class, 'updateStudentWorkDays'])->whereNumber(['internship', 'student'])->name('internships.student-work-days');
 

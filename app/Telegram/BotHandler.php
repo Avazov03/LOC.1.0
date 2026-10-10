@@ -26,8 +26,10 @@ use App\Services\Onboarding\OnboardingException;
 use App\Services\Onboarding\StudentOnboardingService;
 use App\Services\Students\StudentAccessException;
 use App\Services\Students\StudentContextService;
+use App\Services\Students\StudentPhoneService;
 use App\Services\Students\StudentTelegramRebindService;
 use App\Services\Supervisors\SupervisorTelegramService;
+use App\Support\Phone;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -66,6 +68,8 @@ class BotHandler
 
     public const CHANGE_NEW_CONTACT = 'CHANGE_NEW_CONTACT';
 
+    public const CONFIRM_PHONE = 'CONFIRM_PHONE';
+
     /** A39: check-in and check-out attempts per student per minute. */
     public const ATTENDANCE_PER_MINUTE = 6;
 
@@ -88,6 +92,7 @@ class BotHandler
         private readonly SupervisorTelegramService $supervisorTelegram,
         private readonly AttendanceMarkService $marks,
         private readonly StudentTelegramRebindService $rebind,
+        private readonly StudentPhoneService $phones,
     ) {}
 
     /**
@@ -138,6 +143,15 @@ class BotHandler
             return $this->location($update, $conversation);
         }
 
+        if ($update->contact !== null && ($conversation === null || $conversation->state === self::CONFIRM_PHONE)) {
+            return $this->contact($update);
+        }
+        if ($conversation?->state === self::CONFIRM_PHONE) {
+            $this->conversations->clear($update->userId);
+
+            return [$this->reply($update, 'Mayli. Raqamni keyinroq «👤 Profilim» bo‘limidan tasdiqlashingiz mumkin.', Keyboard::menu())];
+        }
+
         if ($conversation !== null) {
             return $this->dialog($update, $conversation, $action, $text);
         }
@@ -178,7 +192,11 @@ class BotHandler
         if ($token === '') {
             $supervisor = $this->supervisorTelegram->linkedProfile($update->userId);
 
-            return [$this->reply($update, $supervisor ? $this->supervisorHelp($supervisor) : BotText::NEED_INVITE, Keyboard::remove())];
+            if ($supervisor !== null) {
+                return [$this->reply($update, $this->supervisorHelp($supervisor), Keyboard::remove())];
+            }
+
+            return [$this->reply($update, BotText::NEED_INVITE."\n\n".BotText::RECOVERY_HINT, Keyboard::contact())];
         }
 
         $key = 'tg-join:'.$update->userId;
@@ -255,16 +273,84 @@ class BotHandler
             return [$this->reply($update, 'Havola noto‘g‘ri yoki muddati tugagan. Rahbaringizdan yangi havola so‘rang.', $this->isRegistered($update->userId) ? Keyboard::menu() : Keyboard::remove())];
         }
 
-        $previous = $result['previous_telegram_user_id'];
-        $this->conversations->clear($update->userId);
-        $replies = [$this->reply($update, BotText::lines([
+        // The number may have changed with the new account; one tap confirms it, "skip" keeps the old one.
+        $this->conversations->put($update->userId, self::CONFIRM_PHONE);
+
+        return $this->moved($update, $result['student'], $result['previous_telegram_user_id'], BotText::lines([
             '✅ Telegram hisobingiz talaba profilingizga ulandi: '.$result['student']->fullName().'.',
-            'Davomat tarixi va amaliyot joyingiz saqlangan. Davomatni shu hisobdan qayd eting.',
-        ]), Keyboard::menu())];
+            'Davomat tarixi va amaliyot joyingiz saqlangan.',
+            '',
+            'Telefon raqamingizni tasdiqlash uchun «📱 Raqamni yuborish» tugmasini bosing. Keyingi safar Telegram hisobingiz almashsa, profilingizni shu raqam orqali o‘zingiz tiklay olasiz.',
+        ]), Keyboard::confirmPhone());
+    }
+
+    /**
+     * A contact sent outside onboarding: a registered student confirms (or updates) their number;
+     * an unknown account tries to recover a profile with a verified number (A85).
+     *
+     * @return list<Reply>
+     */
+    private function contact(Update $update): array
+    {
+        $this->conversations->clear($update->userId);
+        $own = $update->contact !== null && $update->contact['user_id'] === $update->userId;
+        $student = StudentProfile::query()->where('telegram_user_id', $update->userId)->first();
+
+        if ($student !== null) {
+            if ($this->activeStudent($update->userId) === null) {
+                return [$this->reply($update, BotText::ACCESS_DENIED, Keyboard::remove())];
+            }
+            if (! $own) {
+                return [$this->reply($update, 'Faqat o‘zingizning raqamingizni «📱 Raqamni yuborish» tugmasi orqali yuboring.', Keyboard::menu())];
+            }
+
+            return [$this->reply($update, $this->phones->confirm($student, $update->contact['phone']) === StudentPhoneService::CONFIRMED
+                ? '✅ Telefon raqamingiz tasdiqlandi: '.$student->fresh()->phone.'.'
+                : '❌ Bu raqam boshqa talabaga tegishli. Rahbaringizga murojaat qiling.', Keyboard::menu())];
+        }
+
+        $key = 'tg-join:'.$update->userId;
+        if (RateLimiter::tooManyAttempts($key, self::JOIN_PER_MINUTE)) {
+            return [$this->reply($update, BotText::RATE_LIMITED)];
+        }
+        RateLimiter::hit($key, 60);
+        if (! $own) {
+            return [$this->reply($update, 'Faqat o‘zingizning raqamingizni «📱 Raqamni yuborish» tugmasi orqali yuboring.', Keyboard::contact())];
+        }
+
+        return $this->recover($update, $update->contact['phone']) ?? [$this->reply($update, BotText::RECOVERY_NOT_FOUND, Keyboard::remove())];
+    }
+
+    /**
+     * @return list<Reply>|null null when no verified profile has this number
+     */
+    private function recover(Update $update, string $phone): ?array
+    {
+        $result = $this->phones->recover($update->userId, $phone);
+        if ($result['code'] !== StudentPhoneService::RECOVERED) {
+            return null;
+        }
+        $this->conversations->clear($update->userId);
+
+        return $this->moved($update, $result['student'], $result['previous_telegram_user_id'], BotText::lines([
+            '✅ Profilingiz tiklandi: '.$result['student']->fullName().'.',
+            'Davomat tarixi va amaliyot joyingiz saqlangan. Davomatni endi shu Telegram hisobidan qayd eting.',
+        ]), Keyboard::menu());
+    }
+
+    /**
+     * Reply to the new account and tell the old one it lost the profile.
+     *
+     * @param  array<string, mixed>  $markup
+     * @return list<Reply>
+     */
+    private function moved(Update $update, StudentProfile $student, ?int $previous, string $text, array $markup): array
+    {
+        $replies = [$this->reply($update, $text, $markup)];
         if ($previous !== null && $previous !== $update->userId) {
             $this->conversations->clear($previous);
             $replies[] = new Reply($previous, BotText::lines([
-                'ℹ️ Talaba profilingiz boshqa Telegram hisobiga ko‘chirildi. Bu hisobdan endi davomat qayd etib bo‘lmaydi.',
+                'ℹ️ Talaba profilingiz ('.$student->fullName().') boshqa Telegram hisobiga ko‘chirildi. Bu hisobdan endi davomat qayd etib bo‘lmaydi.',
                 'Agar buni siz qilmagan bo‘lsangiz, darhol rahbaringizga murojaat qiling.',
             ]), Keyboard::remove());
         }
@@ -325,6 +411,10 @@ class BotHandler
                 try {
                     $this->onboarding->assertPhoneAvailable((string) ($context['h'] ?? ''), $phone);
                 } catch (OnboardingException $exception) {
+                    // Same verified number: this is the registered student on a new account, so restore the profile.
+                    if ($exception->reason === OnboardingException::PHONE_REGISTERED && ($recovered = $this->recover($update, $phone)) !== null) {
+                        return $recovered;
+                    }
                     $this->conversations->clear($update->userId);
 
                     return [$this->reply($update, $exception->getMessage(), Keyboard::remove())];
@@ -464,18 +554,24 @@ class BotHandler
     private function profile(Update $update): Reply
     {
         $profile = $this->context->profile($update->userId);
+        $verified = $profile['phone_verified'];
+        if (! $verified) {
+            $this->conversations->put($update->userId, self::CONFIRM_PHONE);
+        }
 
         return $this->reply($update, BotText::lines([
             '👤 Profilim',
             '',
             'F.I.Sh.: '.$profile['name'],
-            'Telefon: '.$profile['phone'],
+            'Telefon: '.$profile['phone'].($verified ? ' ✅' : ' (tasdiqlanmagan)'),
             'Universitet: '.$profile['university'],
             $profile['program'] ? 'Yo‘nalish: '.$profile['program'] : null,
             $profile['course'] || $profile['group'] ? 'Kurs / guruh: '.trim(($profile['course'] ?? '').' '.($profile['group'] ?? '')) : null,
             'Talaba ID: '.($profile['student_code'] ?? '—'),
             'Holat: faol',
-        ]), Keyboard::menu());
+            $verified ? null : '',
+            $verified ? null : '📱 Raqamingizni tasdiqlang: Telegram hisobingiz almashsa, profilingizni shu raqam orqali o‘zingiz tiklay olasiz. Raqamingiz o‘zgargan bo‘lsa ham shu tugmani bosing.',
+        ]), $verified ? Keyboard::menu() : Keyboard::confirmPhone());
     }
 
     private function history(Update $update, StudentProfile $student): Reply
@@ -913,15 +1009,7 @@ class BotHandler
 
     private function normalizePhone(string $raw): ?string
     {
-        $digits = preg_replace('/\D+/', '', $raw) ?? '';
-        if (strlen($digits) === 9) {
-            $digits = '998'.$digits;
-        }
-        if (strlen($digits) < 10 || strlen($digits) > 15) {
-            return null;
-        }
-
-        return '+'.$digits;
+        return Phone::normalize($raw);
     }
 
     private function containsCoordinates(string $text): bool

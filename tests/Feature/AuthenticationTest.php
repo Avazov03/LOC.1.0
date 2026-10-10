@@ -107,6 +107,47 @@ class AuthenticationTest extends TestCase
         $this->assertGuest();
     }
 
+    public function test_password_change_elsewhere_signs_out_other_sessions(): void
+    {
+        $supervisor = User::factory()->supervisor()->create(['login' => 'rahbar-1']);
+        $this->post('/login', ['login' => 'rahbar-1', 'password' => 'password'])->assertRedirect('/dashboard');
+        $this->get('/dashboard')->assertOk();
+
+        User::query()->findOrFail($supervisor->id)->forceFill(['password' => 'reset-by-admin-1'])->save();
+        $this->app['auth']->forgetGuards();
+
+        $this->get('/dashboard')->assertRedirect('/login');
+        $this->assertGuest();
+    }
+
+    public function test_own_password_change_keeps_the_current_session(): void
+    {
+        User::factory()->supervisor()->create(['login' => 'rahbar-1']);
+        $this->post('/login', ['login' => 'rahbar-1', 'password' => 'password']);
+
+        $this->from('/profile')->put('/profile/password', [
+            'current_password' => 'password', 'password' => 'new-password-1', 'password_confirmation' => 'new-password-1',
+        ])->assertSessionHasNoErrors();
+        $this->app['auth']->forgetGuards();
+
+        $this->get('/dashboard')->assertOk();
+    }
+
+    public function test_pages_send_security_headers_and_the_inline_script_carries_the_nonce(): void
+    {
+        $response = $this->get('/login')->assertOk();
+
+        $csp = (string) $response->headers->get('Content-Security-Policy');
+        $this->assertMatchesRegularExpression("/script-src 'self' 'nonce-([A-Za-z0-9]+)'/", $csp);
+        preg_match("/'nonce-([A-Za-z0-9]+)'/", $csp, $nonce);
+        $this->assertStringContainsString('<script nonce="'.$nonce[1].'">', $response->getContent());
+        $this->assertStringContainsString("frame-ancestors 'self'", $csp);
+        $this->assertStringContainsString('geolocation=()', (string) $response->headers->get('Permissions-Policy'));
+        $this->assertNull($response->headers->get('Strict-Transport-Security'));
+
+        $this->get('https://localhost/login')->assertHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+
     public function test_logout_ends_the_session(): void
     {
         $admin = User::factory()->create();

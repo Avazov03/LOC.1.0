@@ -1,9 +1,11 @@
 <?php
 
+use App\Models\User;
 use App\Services\Admin\BootstrapAdminService;
 use App\Services\Assignments\InternshipAssignmentService;
 use App\Services\Attendance\AttendanceService;
 use App\Services\Attendance\DailyReminderService;
+use App\Services\Auth\TwoFactorService;
 use App\Services\Internships\InviteService;
 use App\Telegram\ConversationStore;
 use App\Telegram\TelegramApiException;
@@ -50,6 +52,19 @@ Artisan::command('admin:ensure {--login=} {--name=}', function (BootstrapAdminSe
 
     return 0;
 })->purpose('Create or refresh the first ADMIN from ADMIN_LOGIN / ADMIN_PASSWORD in .env');
+
+Artisan::command('user:two-factor-reset {login}', function (TwoFactorService $twoFactor) {
+    $user = User::query()->where('login', $this->argument('login'))->first();
+    if ($user === null) {
+        $this->error('Bunday login topilmadi.');
+
+        return 1;
+    }
+    $twoFactor->reset(null, $user);
+    $this->info("{$user->login}: ikki bosqichli himoya o‘chirildi. Endi faqat parol bilan kiradi.");
+
+    return 0;
+})->purpose('Turn off the second factor of a staff user who lost the phone and the recovery codes');
 
 Artisan::command('telegram:webhook {url? : Public HTTPS URL of /telegram/webhook} {--delete} {--info}', function (TelegramClient $client) use ($allowedUpdates) {
     try {

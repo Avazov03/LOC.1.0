@@ -18,6 +18,7 @@ type Supervisor = {
     open_students: number;
     telegram_linked: boolean;
     telegram_linked_at: string | null;
+    two_factor_enabled: boolean;
 };
 
 type Period = {
@@ -109,6 +110,24 @@ export default function SupervisorShow({ supervisor, periods, history }: { super
                                             onClick={() => window.confirm('Rahbarning Telegram ulanishini uzasizmi?') && router.delete(`/supervisors/${supervisor.id}/telegram`, { preserveScroll: true })}
                                         >
                                             Uzish
+                                        </Button>
+                                    ) : null}
+                                </span>,
+                            ],
+                            [
+                                'Ikki bosqichli himoya',
+                                <span key="2fa" className="inline-flex flex-wrap items-center gap-2">
+                                    {supervisor.two_factor_enabled ? <Badge tone="success">Yoqilgan</Badge> : <Badge tone="secondary">O‘chiq</Badge>}
+                                    {supervisor.two_factor_enabled ? (
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() =>
+                                                window.confirm('Rahbar telefonini va zaxira kodlarini yo‘qotgan bo‘lsa, ikki bosqichli himoyani o‘chiring. Shundan keyin u faqat parol bilan kiradi. Davom etasizmi?') &&
+                                                router.post(`/supervisors/${supervisor.id}/two-factor-reset`, {}, { preserveScroll: true })
+                                            }
+                                        >
+                                            O‘chirish
                                         </Button>
                                     ) : null}
                                 </span>,

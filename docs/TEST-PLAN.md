@@ -110,6 +110,9 @@ Boundary tests must build real geography points and call PostGIS, not a PHP have
 | Typed phone or someone else's contact | refused; only own contact button accepted |
 | Phone already registered in the university (any format) | PHONE_REGISTERED at the phone step and at confirm; other universities not affected |
 | Rebind link from supervisor/admin | new account takes the same profile, history and open session; old account loses access and is told; link works once, expires in 24 h; another student's account and a blocked student refused; foreign scope 404 |
+| Self-recovery by verified phone (`StudentIdentityTest`) | own contact from a new account moves the profile, old account told, supervisor message, audit; unverified number, blocked student or someone else's contact refused; JOIN_PHONE recovers; staff phone edit clears verification; profile confirm/update and "taken" refusal |
+| Evening digest with several groups | sections "👥 group (n)", numbering and buttons in the same order, button marks the right student |
+| Holiday | check-in refused as HOLIDAY without an event, day not expected, digest skipped; removing it restores ABSENT; supervisor 403 |
 
 ## 4. Concurrency
 
@@ -122,6 +125,8 @@ Implemented on PostgreSQL with two sessions (`ConcurrencyTest`): simultaneous op
 ## 5. Security
 
 IDOR cases in section 2. Role bypass on each admin route. Manual correction as supervisor: forbidden. Webhook without secret: forbidden. Audit row contains actor and not the bot token.
+
+`TwoFactorTest`: RFC 6238 vector; enabling needs the password and a valid code, secret encrypted at rest; login stops at the challenge, wrong code refused, the same code cannot be used twice, recovery code works once, the pending login expires after 300 s and after 5 wrong codes; disable needs the password; admin and `user:two-factor-reset` turn it off; an impersonating admin cannot. `AuthenticationTest`: a password changed elsewhere signs out other sessions while the changing session survives; CSP with a nonce on the inline script, Permissions-Policy, HSTS only over HTTPS.
 
 ## 6. Seed scenarios used by tests and local demo
 

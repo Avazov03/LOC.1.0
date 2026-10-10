@@ -26,6 +26,23 @@ export function StudentTelegramStatus({ studentId, linked, active }: { studentId
     );
 }
 
+export function StudentPhone({ phone, verified }: { phone: string; verified: boolean }) {
+    return (
+        <span className="inline-flex flex-wrap items-center gap-2">
+            {phone}
+            {verified ? (
+                <Badge tone="success" title="Telegram tugmasi orqali tasdiqlangan: talaba yangi Telegram hisobidan profilini o‘zi tiklay oladi.">
+                    Tasdiqlangan
+                </Badge>
+            ) : (
+                <Badge tone="secondary" title="Raqam qo‘lda kiritilgan. Talaba botdagi «Profilim» bo‘limida tasdiqlashi mumkin.">
+                    Tasdiqlanmagan
+                </Badge>
+            )}
+        </span>
+    );
+}
+
 export function StudentTelegramLink() {
     const { flash } = usePage<SharedProps>().props;
     const [copied, setCopied] = useState(false);

@@ -30,7 +30,7 @@ class StudentContextService
     }
 
     /**
-     * @return array{student_id: int, name: string, phone: string, student_code: ?string, university: string, program: ?string, course: ?string, group: ?string, assignment: ?array<string, mixed>}
+     * @return array{student_id: int, name: string, phone: string, phone_verified: bool, student_code: ?string, university: string, program: ?string, course: ?string, group: ?string, assignment: ?array<string, mixed>}
      */
     public function profile(int $telegramUserId): array
     {
@@ -41,6 +41,7 @@ class StudentContextService
             'student_id' => $student->id,
             'name' => $student->fullName(),
             'phone' => $student->phone,
+            'phone_verified' => $student->phone_verified_at !== null,
             'student_code' => $student->student_code,
             'university' => $student->university->name,
             'program' => $student->currentGroup?->studyYear?->program?->name,

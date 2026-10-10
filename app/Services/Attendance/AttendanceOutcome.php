@@ -37,6 +37,8 @@ final class AttendanceOutcome
 
     public const NOT_WORK_DAY = 'NOT_WORK_DAY';
 
+    public const HOLIDAY = 'HOLIDAY';
+
     public const ORGANIZATION_INACTIVE = 'ORGANIZATION_INACTIVE';
 
     public const DUPLICATE_OPEN = 'DUPLICATE_OPEN';

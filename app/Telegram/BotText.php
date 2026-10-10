@@ -17,6 +17,10 @@ final class BotText
 
     public const NEED_INVITE = 'Ro‘yxatdan o‘tish uchun universitet bergan taklif havolasini oching.';
 
+    public const RECOVERY_HINT = 'Avval ro‘yxatdan o‘tgan bo‘lsangiz-u, hozir yangi Telegram hisobidan kirayotgan bo‘lsangiz, pastdagi «📱 Raqamni yuborish» tugmasini bosing — profilingizni raqamingiz orqali tiklaymiz.';
+
+    public const RECOVERY_NOT_FOUND = 'Bu raqam bilan tasdiqlangan profil topilmadi. Avval ro‘yxatdan o‘tgan bo‘lsangiz, rahbaringizdan «Telegram’ni qayta bog‘lash» havolasini so‘rang. Yangi talaba bo‘lsangiz, universitet bergan taklif havolasini oching.';
+
     public const ALREADY_REGISTERED = 'Siz allaqachon ro‘yxatdan o‘tgansiz.';
 
     public const RATE_LIMITED = 'Juda ko‘p so‘rov yuborildi. Bir daqiqadan keyin qayta urinib ko‘ring.';
@@ -87,6 +91,7 @@ final class BotText
             AttendanceOutcome::LOCATION_MISSING => 'Joylashuv yuborish kerak. «📍 Joylashuvni yuborish» tugmasini bosing.',
             AttendanceOutcome::NO_ASSIGNMENT => self::NO_ACTIVE_ASSIGNMENT,
             AttendanceOutcome::OUTSIDE_PERIOD => 'Amaliyot muddatidan tashqarida davomat qabul qilinmaydi.',
+            AttendanceOutcome::HOLIDAY => "🎉 Bugun dam olish kuni: {$data['name']}.\nKelishni qayd etish shart emas, bu kun «Kelmadi» deb hisoblanmaydi.",
             AttendanceOutcome::NOT_WORK_DAY => "📅 Bugun sizning amaliyot kuningiz emas.\nAmaliyot kunlaringiz: {$data['days']}.\nBu kun «Kelmadi» deb hisoblanmaydi.",
             AttendanceOutcome::ORGANIZATION_INACTIVE => 'Amaliyot joyingiz hozir faol emas. Rahbaringizga murojaat qiling.',
             AttendanceOutcome::DUPLICATE_OPEN => 'Sizda allaqachon faol davomat mavjud. Ketayotganda «🔴 Amaliyotni tugatish» tugmasini bosing.',

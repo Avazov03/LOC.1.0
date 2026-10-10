@@ -3,7 +3,7 @@ import { FormEvent, useState } from 'react';
 import ChangeRequestTable from '@/Components/ChangeRequestTable';
 import Icon from '@/Components/Icon';
 import Modal, { ModalBody, ModalFooter } from '@/Components/Modal';
-import { StudentTelegramLink, StudentTelegramStatus } from '@/Components/StudentTelegramRebind';
+import { StudentPhone, StudentTelegramLink, StudentTelegramStatus } from '@/Components/StudentTelegramRebind';
 import { Button, Card, CardHeader, Dl, EmptyRow, Field, Input, Select, StatusBadge, Table, Td, Textarea } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
 import type { Assignment, ChangeRequest, OrganizationOption, StudentDetail } from '@/types';
@@ -88,7 +88,7 @@ export default function StudentShow({
                     />
                     <Dl
                         items={[
-                            ['Telefon', student.phone],
+                            ['Telefon', <StudentPhone key="ph" phone={student.phone} verified={student.phone_verified} />],
                             ['Talaba ID', student.student_code],
                             ['Holat', <StatusBadge key="s" status={student.status} />],
                             ['Joriy tashkilot', current?.organization ?? 'Biriktirilmagan'],

@@ -74,8 +74,21 @@ Duplicate start for the same person does not create a second student. A new Tele
     → token hash matches, not expired, student ACTIVE
     → this Telegram id belongs to another student → refuse
     → else student.telegram_user_id = sender; old and new conversations cleared
-    → new account: "✅ Telegram hisobingiz talaba profilingizga ulandi"
+    → new account: "✅ Telegram hisobingiz talaba profilingizga ulandi" + asks to confirm the phone (CONFIRM_PHONE)
     → old account: notice that the profile moved and it can no longer record attendance
+```
+
+Without a link the student can recover alone when the phone is verified (A85):
+
+```text
+/start (no token, unknown account) → "invite needed" + "📱 Raqamni yuborish" button
+    contact (own, contact.user_id = sender)
+    → exactly one ACTIVE student with this verified phone → profile moves here
+         new account: "✅ Profilingiz tiklandi", old account: notice, supervisor: "🔁 … qayta tikladi"
+    → otherwise: "ask your supervisor for the rebind link, or open the invite if you are new"
+JOIN_PHONE with a verified registered number → the same recovery instead of PHONE_REGISTERED
+«👤 Profilim» → "Telefon: … ✅" or "(tasdiqlanmagan)" with the share button;
+    sharing a new own number updates it unless another student has it.
 ```
 
 Conversation context expires. An abandoned join does not leave a partial student. The profile is written only on the final confirm.
@@ -203,6 +216,7 @@ CHANGE_EXISTING_ORG
 CHANGE_NEW_NAME
 CHANGE_NEW_ADDRESS
 CHANGE_NEW_CONTACT
+CONFIRM_PHONE
 ```
 
 A menu command from a non-idle state cancels the pending dialog and does not write attendance. A location that arrives with no waiting state is logged and ignored. A forwarded location or a venue is stored as a failed `INVALID_LOCATION` attempt (A74). Group chats and edited messages are ignored. Conversation state is a `telegram_conversations` row that expires after `TELEGRAM_CONVERSATION_TTL` minutes (default 30); IDLE has no row.
@@ -229,7 +243,7 @@ Amaliyot kunlaringiz: Du, Chor, Ju.
 Bu kun «Kelmadi» deb hisoblanmaydi.
 ```
 
-No event is written. "Mening amaliyotim" shows "🗓 Amaliyot kunlari". "Davomatim" shows each day with its icon (✅ ⏳ 📍 📝 ❌) and "(rahbar belgiladi)" for supervisor marks. After the university reminder time (default 18:00) a student whose session from today is still open gets one reminder to check out.
+On a university holiday (A87) the reply is "🎉 Bugun dam olish kuni: {name}." instead. No event is written. "Mening amaliyotim" shows "🗓 Amaliyot kunlari". "Davomatim" shows each day with its icon (✅ ⏳ 📍 📝 ❌) and "(rahbar belgiladi)" for supervisor marks. After the university reminder time (default 18:00) a student whose session from today is still open gets one reminder to check out.
 
 ## 12. Supervisor in the bot
 
@@ -238,6 +252,7 @@ No event is written. "Mening amaliyotim" shows "🗓 Amaliyot kunlari". "Davomat
 3. A linked supervisor (not a student, not in onboarding) gets a short help text for any message; there is no student menu.
 4. Messages the supervisor receives:
    - "🟢 {F.I.Sh.} amaliyotga keldi" / "🔴 … amaliyotdan ketdi" with group, time, organization, duration and distance, for students of internships they currently supervise (can be turned off in the profile);
-   - once a day after the reminder time, the list of today's expected students who are ABSENT or LOCATION_REJECTED, with a "✅ name" button per student and "✅ Hammasi keldi".
+   - once a day after the reminder time, the list of today's expected students who are ABSENT or LOCATION_REJECTED, sorted and headed by group ("👥 group (count)") when there is more than one, with a "✅ name · group" button per student and "✅ Hammasi keldi";
+   - "🔁 … Telegram hisobini o‘z telefon raqami orqali qayta tikladi" when a student recovers the profile (A85).
 5. A button press marks that date PRESENT through the same rules as the web (scope, 7-day window, assignment). Callback data is `dg:{digestId}:{index|all}`; a list that is stale or belongs to another supervisor is refused.
 6. Unlinking (by the supervisor or an admin) stops all messages immediately.

@@ -111,6 +111,20 @@ final class Keyboard
     }
 
     /**
+     * Optional phone confirmation: share the number or skip.
+     *
+     * @return array<string, mixed>
+     */
+    public static function confirmPhone(): array
+    {
+        return [
+            'keyboard' => [[['text' => self::SEND_CONTACT, 'request_contact' => true]], [['text' => self::SKIP]]],
+            'resize_keyboard' => true,
+            'one_time_keyboard' => true,
+        ];
+    }
+
+    /**
      * @param  list<list<string>>  $rows
      * @return array<string, mixed>
      */

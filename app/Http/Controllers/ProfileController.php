@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\TwoFactorService;
 use App\Services\Supervisors\SupervisorTelegramService;
 use App\Support\Present;
+use App\Support\Totp;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +21,7 @@ class ProfileController extends Controller
 {
     public function __construct(private readonly SupervisorTelegramService $telegram) {}
 
-    public function show(Request $request): Response
+    public function show(Request $request, TwoFactorService $twoFactor): Response
     {
         $user = $request->user();
         $profile = $user->supervisorProfile;
@@ -35,7 +37,55 @@ class ProfileController extends Controller
             ] : null,
             'reminderTime' => $user->university->reminder_time,
             'botUsername' => config('services.telegram.bot_username'),
+            'twoFactor' => [
+                'enabled' => $user->hasTwoFactor(),
+                'remaining_codes' => $twoFactor->remainingCodes($user),
+                // The secret is shown only to its owner and only until set-up is confirmed.
+                'setup' => ! $user->hasTwoFactor() && $user->two_factor_secret !== null ? [
+                    'secret' => $user->two_factor_secret,
+                    'uri' => Totp::uri($user->two_factor_secret, (string) config('app.name'), $user->login),
+                ] : null,
+            ],
         ]);
+    }
+
+    public function twoFactorBegin(Request $request, TwoFactorService $twoFactor): RedirectResponse
+    {
+        $request->validate(['current_password' => ['required', 'current_password']]);
+        $twoFactor->begin($request->user());
+
+        return back()->with('success', 'Ilovada QR kodni skanerlang va hosil bo‘lgan 6 xonali kodni kiriting.');
+    }
+
+    public function twoFactorCancel(Request $request, TwoFactorService $twoFactor): RedirectResponse
+    {
+        $twoFactor->cancel($request->user());
+
+        return back();
+    }
+
+    public function twoFactorConfirm(Request $request, TwoFactorService $twoFactor): RedirectResponse
+    {
+        $data = $request->validate(['code' => ['required', 'string', 'max:10']]);
+        $codes = $twoFactor->confirm($request->user(), $data['code']);
+
+        return back()->with(['success' => 'Ikki bosqichli himoya yoqildi.', 'recovery_codes' => $codes]);
+    }
+
+    public function twoFactorCodes(Request $request, TwoFactorService $twoFactor): RedirectResponse
+    {
+        $request->validate(['current_password' => ['required', 'current_password']]);
+        $codes = $twoFactor->regenerateCodes($request->user());
+
+        return back()->with(['success' => 'Yangi zaxira kodlar yaratildi. Eskilari endi ishlamaydi.', 'recovery_codes' => $codes]);
+    }
+
+    public function twoFactorDisable(Request $request, TwoFactorService $twoFactor): RedirectResponse
+    {
+        $request->validate(['current_password' => ['required', 'current_password']]);
+        $twoFactor->disable($request->user());
+
+        return back()->with('success', 'Ikki bosqichli himoya o‘chirildi.');
     }
 
     public function password(Request $request, AuditLogger $audit): RedirectResponse

@@ -45,6 +45,7 @@ class HandleInertiaRequests extends Middleware
                 'invite_link' => fn () => $request->session()->get('invite_link'),
                 'telegram_link' => fn () => $request->session()->get('telegram_link'),
                 'assignment_results' => fn () => $request->session()->get('assignment_results'),
+                'recovery_codes' => fn () => $request->session()->get('recovery_codes'),
             ],
             'appName' => config('app.name'),
         ];

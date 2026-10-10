@@ -1,6 +1,7 @@
 import { useForm } from '@inertiajs/react';
 import { FormEvent } from 'react';
 import AuditTable from '@/Components/AuditTable';
+import HolidayCalendar, { type Holiday } from '@/Components/HolidayCalendar';
 import { Button, Card, CardHeader, Field, Input, Select } from '@/Components/ui';
 import AppLayout from '@/Layouts/AppLayout';
 import type { AuditEntry } from '@/types';
@@ -9,10 +10,14 @@ export default function Settings({
     university,
     timezones,
     history,
+    holidays,
+    today,
 }: {
     university: { name: string; slug: string; timezone: string; reminder_time: string };
     timezones: string[];
     history: AuditEntry[];
+    holidays: Holiday[];
+    today: string;
 }) {
     const form = useForm({ name: university.name, timezone: university.timezone, reminder_time: university.reminder_time });
 
@@ -63,6 +68,8 @@ export default function Settings({
                         </div>
                     </form>
                 </Card>
+
+                <HolidayCalendar holidays={holidays} today={today} />
 
                 <Card>
                     <CardHeader title="O‘zgarishlar tarixi" />

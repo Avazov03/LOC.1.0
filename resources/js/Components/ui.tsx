@@ -117,8 +117,12 @@ export function Dl({ items }: { items: Array<[string, ReactNode]> }) {
     );
 }
 
-export function Badge({ tone, children }: { tone: Tone; children: ReactNode }) {
-    return <span className={cx('inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold', toneClasses[tone])}>{children}</span>;
+export function Badge({ tone, children, title }: { tone: Tone; children: ReactNode; title?: string }) {
+    return (
+        <span title={title} className={cx('inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold', toneClasses[tone])}>
+            {children}
+        </span>
+    );
 }
 
 export function IconTile({ icon, tone, className }: { icon: IconName; tone: Tone; className?: string }) {

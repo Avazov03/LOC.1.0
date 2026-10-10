@@ -51,9 +51,32 @@ class SupervisorNotifier
     }
 
     /**
+     * The student moved their profile to a new Telegram account with their verified number (A85).
+     * Sent regardless of notify_check_events: it is a security notice, not an attendance event.
+     */
+    public function studentRecovered(StudentProfile $student): void
+    {
+        $internshipId = $student->participations()->orderByDesc('joined_at')->value('internship_id');
+        $supervisor = $internshipId === null ? null : $this->currentSupervisor((int) $internshipId);
+        if ($supervisor === null) {
+            return;
+        }
+
+        $student->loadMissing('currentGroup:id,name');
+        $this->queue('recover:'.$student->id.':'.now()->getTimestamp(), $supervisor->id, BotText::lines([
+            '🔁 '.$student->fullName().' Telegram hisobini o‘z telefon raqami orqali qayta tikladi.',
+            $student->currentGroup ? '👥 Guruh: '.$student->currentGroup->name : null,
+            '📱 '.$student->phone,
+            'Agar bu talabaning o‘zi emas deb o‘ylasangiz, talaba sahifasidan «Telegram’ni qayta bog‘lash» havolasini yarating.',
+        ]));
+    }
+
+    /**
      * The daily list of students with nothing recorded today, with a "Keldi" button each.
      *
-     * @param  list<array{id: int, name: string}>  $students
+     * Students arrive sorted by group, so the numbering, the group sections and the button indexes all agree.
+     *
+     * @param  list<array{id: int, name: string, group: string}>  $students
      */
     public function digest(SupervisorProfile $supervisor, string $date, array $students, ?string $url): void
     {
@@ -65,8 +88,15 @@ class SupervisorNotifier
             return;
         }
 
-        $lines = ['📋 '.CarbonImmutable::parse($date)->format('d.m.Y').' — davomati belgilanmagan talabalar: '.count($students), ''];
+        $lines = ['📋 '.CarbonImmutable::parse($date)->format('d.m.Y').' — davomati belgilanmagan talabalar: '.count($students)];
+        $grouped = count(array_unique(array_column($students, 'group'))) > 1;
+        $group = null;
         foreach ($students as $index => $student) {
+            if ($student['group'] !== $group) {
+                $group = $student['group'];
+                $lines[] = '';
+                $lines[] = '👥 '.$group.($grouped ? ' ('.count(array_filter($students, fn (array $row) => $row['group'] === $group)).')' : '');
+            }
             $lines[] = ($index + 1).'. '.$student['name'];
         }
         $lines[] = '';
@@ -79,7 +109,10 @@ class SupervisorNotifier
 
         $this->queue($key, $supervisor->id, implode("\n", $lines), [
             'date' => $date,
-            'students' => array_map(fn (array $student) => [$student['id'], $student['name']], array_slice($students, 0, self::DIGEST_BUTTONS)),
+            'students' => array_map(
+                fn (array $student) => [$student['id'], $student['name'], $grouped ? $student['group'] : null],
+                array_slice($students, 0, self::DIGEST_BUTTONS),
+            ),
         ]);
     }
 

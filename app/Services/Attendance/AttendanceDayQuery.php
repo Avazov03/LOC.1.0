@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
  * exports and the bot agree and nothing loads thousands of rows into PHP to count them.
  *
  * One row per (student, local date). day_status is null when the student had nothing expected and nothing recorded.
- * A day is expected only inside an ACTIVE/ENDED assignment and on the student's work days.
+ * A day is expected only inside an ACTIVE/ENDED assignment, on the student's work days and not on a university holiday.
  */
 class AttendanceDayQuery
 {
@@ -241,6 +241,8 @@ class AttendanceDayQuery
             ." WHERE a.student_profile_id = student_profiles.id AND a.status IN ('ACTIVE', 'ENDED')"
             .' AND a.start_at <= days.de AND COALESCE(a.ended_at, a.end_at) >= days.ds'
             .' AND (COALESCE(p.work_days, i.work_days) & days.wbit) <> 0'
+            .') AND NOT EXISTS (SELECT 1 FROM university_holidays h'
+            .' WHERE h.university_id = student_profiles.university_id AND h.date = days.d'
             .') THEN 1 ELSE 0 END AS expected',
         ]);
     }

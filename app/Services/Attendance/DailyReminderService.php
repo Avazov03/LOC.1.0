@@ -5,6 +5,7 @@ namespace App\Services\Attendance;
 use App\Enums\ActiveStatus;
 use App\Enums\SessionStatus;
 use App\Models\AttendanceSession;
+use App\Models\StudentGroup;
 use App\Models\StudentProfile;
 use App\Models\SupervisorNotification;
 use App\Models\SupervisorProfile;
@@ -78,14 +79,17 @@ class DailyReminderService
         $rows = $this->days->rows($students, [$today], $timezone)
             ->where('expected', 1)
             ->whereIn('day_status', self::UNMARKED)
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get(['student_profile_id', 'last_name', 'first_name']);
+            ->get(['student_profile_id', 'last_name', 'first_name', 'current_group_id']);
+        $groups = StudentGroup::query()->whereIn('id', $rows->pluck('current_group_id')->filter()->unique())->pluck('name', 'id');
 
         $this->supervisors->digest(
             $supervisor,
             $today,
-            $rows->map(fn ($row) => ['id' => (int) $row->student_profile_id, 'name' => trim($row->last_name.' '.$row->first_name)])->values()->all(),
+            $rows->map(fn ($row) => [
+                'id' => (int) $row->student_profile_id,
+                'name' => trim($row->last_name.' '.$row->first_name),
+                'group' => $groups[$row->current_group_id] ?? 'Guruhsiz',
+            ])->sortBy([['group', 'asc'], ['name', 'asc']])->values()->all(),
             rtrim((string) config('app.url'), '/').'/attendance?date='.$today.'&status=ABSENT',
         );
     }

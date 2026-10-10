@@ -128,6 +128,7 @@ class Present
             'status' => $student->status->value,
             'telegram_user_id' => $admin ? (string) $student->telegram_user_id : null,
             'telegram_linked' => $student->telegram_user_id !== null,
+            'phone_verified' => $student->phone_verified_at !== null,
             'registered_at' => self::dateTime($student->created_at, $timezone),
             'group' => $group?->name,
             'course' => $group?->studyYear?->name,

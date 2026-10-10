@@ -181,7 +181,7 @@ class TelegramBotTest extends TestCase
 
         $this->assertSame((new OnboardingException(OnboardingException::INVALID_INVITE))->getMessage(), $this->say(880010, '/start '.str_repeat('x', 43)));
         $this->assertSame((new OnboardingException(OnboardingException::INVALID_INVITE))->getMessage(), $this->say(880010, '/start bad token!'));
-        $this->assertSame(BotText::NEED_INVITE, $this->say(880010, '/start'));
+        $this->assertStringStartsWith(BotText::NEED_INVITE, $this->say(880010, '/start'));
 
         $closed = $this->invite($world);
         InternshipInvite::query()->update(['status' => 'CLOSED', 'closed_at' => now()]);

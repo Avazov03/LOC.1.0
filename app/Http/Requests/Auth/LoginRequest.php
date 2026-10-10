@@ -7,7 +7,6 @@ use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -33,7 +32,10 @@ class LoginRequest extends FormRequest
         ];
     }
 
-    public function authenticate(): void
+    /**
+     * Checks the login and password. The caller signs the user in, or first asks for the second factor.
+     */
+    public function authenticate(): User
     {
         $this->ensureIsNotRateLimited();
 
@@ -51,8 +53,9 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        Auth::login($user);
         RateLimiter::clear($this->throttleKey());
+
+        return $user;
     }
 
     private function ensureIsNotRateLimited(): void

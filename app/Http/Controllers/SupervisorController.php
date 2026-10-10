@@ -8,6 +8,7 @@ use App\Models\AuditLog;
 use App\Models\InternshipSupervisorPeriod;
 use App\Models\SupervisorProfile;
 use App\Services\Audit\AuditLogger;
+use App\Services\Auth\TwoFactorService;
 use App\Services\Supervisors\SupervisorService;
 use App\Services\Supervisors\SupervisorTelegramService;
 use App\Support\Present;
@@ -59,6 +60,7 @@ class SupervisorController extends Controller
                 'open_students' => $openStudents,
                 'telegram_linked' => $profile->telegram_user_id !== null,
                 'telegram_linked_at' => Present::dateTime($profile->telegram_linked_at, $timezone),
+                'two_factor_enabled' => $profile->user->hasTwoFactor(),
             ],
             'periods' => $periods->map(fn (InternshipSupervisorPeriod $period) => [
                 'id' => $period->id,
@@ -105,6 +107,13 @@ class SupervisorController extends Controller
         $telegram->unlink($request->user(), $this->supervisors->find($request->user(), $supervisor));
 
         return back()->with('success', 'Rahbarning Telegrami uzildi.');
+    }
+
+    public function twoFactorReset(Request $request, int $supervisor, TwoFactorService $twoFactor): RedirectResponse
+    {
+        $twoFactor->reset($request->user(), $this->supervisors->find($request->user(), $supervisor)->user);
+
+        return back()->with('success', 'Ikki bosqichli himoya o‘chirildi. Rahbar endi faqat parol bilan kiradi va uni Profil sahifasida qayta yoqishi mumkin.');
     }
 
     public function status(Request $request, int $supervisor): RedirectResponse
